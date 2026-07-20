@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="WanderPlan – Wanderrouten planen mit Karte, GPS, Kompass und Höhenmesser">
+  <title>WanderPlan – Wander-Routenplaner</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🥾</text></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🥾 <span>WanderPlan</span></div>
+    <div class="topbar-widgets">
+      <div id="altimeter" class="altimeter" title="Höhenmesser – aktuelle Höhe">
+        <span class="alt-icon">⛰</span>
+        <span id="altValue">– m</span>
+      </div>
+      <button id="compassBtn" class="compass" title="Kompass aktivieren" aria-label="Kompass aktivieren">
+        <span class="compass-pointer"></span>
+        <span class="compass-rose" id="compassRose">
+          <i class="c-n">N</i><i class="c-e">O</i><i class="c-s">S</i><i class="c-w">W</i>
+        </span>
+      </button>
+      <span id="compassText" class="compass-text">–</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="map"></div>
+
+    <div class="map-fabs">
+      <button id="btnLocate" class="fab" title="Meine Position anzeigen" aria-label="Meine Position anzeigen">📍</button>
+    </div>
+    <div id="gpsChip" class="gps-chip hidden"></div>
+
+    <section id="panel" class="panel">
+      <button class="panel-handle" id="panelHandle" aria-label="Panel ein-/ausklappen"><span></span></button>
+      <nav class="tabs">
+        <button class="tab active" data-tab="route">Route</button>
+        <button class="tab" data-tab="tracking">Tracking</button>
+        <button class="tab" data-tab="saved">Gespeichert</button>
+      </nav>
+
+      <div class="tab-content" id="tab-route">
+        <p class="hint">Tippe auf die Karte, um Wegpunkte zu setzen. Marker ziehen = verschieben, Marker antippen = entfernen.</p>
+        <div class="field-row">
+          <label for="profileSelect">Routing-Profil</label>
+          <select id="profileSelect">
+            <option value="hiking-mountain" selected>Wandern (Gebirge)</option>
+            <option value="trekking">Trekking</option>
+            <option value="shortest">Kürzester Weg</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button id="btnUndo" class="btn" title="Letzten Wegpunkt entfernen">↩ Rückgängig</button>
+          <button id="btnReverse" class="btn" title="Richtung der Route umkehren">⇅ Umkehren</button>
+          <button id="btnClear" class="btn btn-danger" title="Alle Wegpunkte löschen">✕ Löschen</button>
+        </div>
+        <div id="routeStatus" class="status hidden"></div>
+        <div class="stats-grid">
+          <div class="stat"><span class="stat-value" id="statDistance">–</span><span class="stat-label">Distanz</span></div>
+          <div class="stat"><span class="stat-value" id="statAscent">–</span><span class="stat-label">Anstieg</span></div>
+          <div class="stat"><span class="stat-value" id="statDescent">–</span><span class="stat-label">Abstieg</span></div>
+          <div class="stat"><span class="stat-value" id="statDuration">–</span><span class="stat-label">Gehzeit</span></div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="elevationChart"></canvas>
+          <p class="chart-empty" id="chartEmpty">Das Höhenprofil erscheint hier, sobald eine Route berechnet wurde.</p>
+        </div>
+        <div class="btn-row">
+          <button id="btnSaveRoute" class="btn btn-primary">💾 Speichern</button>
+          <button id="btnExportRoute" class="btn">⬇ GPX-Export</button>
+          <button id="btnImport" class="btn">⬆ GPX laden</button>
+          <input type="file" id="fileInput" accept=".gpx,application/gpx+xml" hidden>
+        </div>
+      </div>
+
+      <div class="tab-content hidden" id="tab-tracking">
+        <p class="hint">Zeichne deine Wanderung live auf. Das GPS wird beim Start automatisch aktiviert.</p>
+        <div class="stats-grid stats-grid-3">
+          <div class="stat"><span class="stat-value" id="trkDuration">–</span><span class="stat-label">Dauer</span></div>
+          <div class="stat"><span class="stat-value" id="trkDistance">–</span><span class="stat-label">Distanz</span></div>
+          <div class="stat"><span class="stat-value" id="trkAvgSpeed">–</span><span class="stat-label">Ø Tempo</span></div>
+          <div class="stat"><span class="stat-value" id="trkSpeed">–</span><span class="stat-label">Tempo</span></div>
+          <div class="stat"><span class="stat-value" id="trkAscent">–</span><span class="stat-label">Anstieg</span></div>
+          <div class="stat"><span class="stat-value" id="trkAltitude">–</span><span class="stat-label">Höhe</span></div>
+        </div>
+        <div class="btn-row">
+          <button id="btnTrackStart" class="btn btn-primary">● Aufzeichnung starten</button>
+          <button id="btnTrackPause" class="btn hidden">⏸ Pause</button>
+          <button id="btnTrackResume" class="btn hidden">▶ Weiter</button>
+          <button id="btnTrackStop" class="btn btn-danger hidden">■ Stopp</button>
+        </div>
+        <div class="btn-row hidden" id="trackFinishRow">
+          <button id="btnTrackSave" class="btn btn-primary">💾 Speichern</button>
+          <button id="btnTrackExport" class="btn">⬇ GPX-Export</button>
+          <button id="btnTrackDiscard" class="btn btn-danger">🗑 Verwerfen</button>
+        </div>
+      </div>
+
+      <div class="tab-content hidden" id="tab-saved">
+        <h3>Gespeicherte Routen</h3>
+        <ul id="routeList" class="item-list"></ul>
+        <h3>Aufgezeichnete Tracks</h3>
+        <ul id="trackList" class="item-list"></ul>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
