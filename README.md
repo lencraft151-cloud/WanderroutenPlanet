@@ -1,7 +1,8 @@
 # 🥾 WanderPlan – Wander-Routenplaner
 
-Eine Web-Plattform zum Planen von Wanderrouten – komplett in HTML, CSS und
-Vanilla-JavaScript, ohne Build-Schritt und ohne Frameworks.
+Eine Web-Plattform zum Planen von Wanderrouten und zum **Live-Teilen des
+eigenen Standorts** – komplett in HTML, CSS und Vanilla-JavaScript, ohne
+Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 
 ## Funktionen
 
@@ -21,12 +22,47 @@ Vanilla-JavaScript, ohne Build-Schritt und ohne Frameworks.
   [Open-Meteo](https://open-meteo.com)-Elevation-API
 - **Live-Tracking**: Wanderung aufzeichnen mit Dauer, Distanz, Tempo und
   Höhenmetern (Start/Pause/Stopp)
+- **📡 Live-Standort teilen**: Erzeuge einen Link – wer ihn öffnet, sieht live
+  auf der Karte, wo du gerade bist (Entfernung, Richtung, Tempo, Höhe).
 - **GPX-Export & -Import**: Routen und Tracks als GPX 1.1 herunterladen oder
   bestehende GPX-Dateien laden (kompatibel mit Garmin, Komoot & Co.)
 - **Lokales Speichern**: Routen und Tracks werden im Browser (localStorage)
   verwaltet – Laden, Exportieren, Löschen
+- **Mobil-optimiert & installierbar**: ziehbares Bottom-Sheet mit Rastpunkten,
+  große Touch-Flächen, Hilfe-Overlay und Installation zum Home-Bildschirm (PWA)
+  inkl. Offline-Start der App-Oberfläche
 
-## Starten
+## Live-Standort teilen
+
+1. Tab **„Teilen"** öffnen, optional einen Namen eingeben, **„Live-Standort
+   teilen"** tippen.
+2. Den erzeugten **Link** per „Teilen"-Button oder Kopieren an deine
+   Begleiter schicken.
+3. Wer den Link öffnet, landet automatisch im **Betrachter-Modus** und sieht
+   deine Position live auf der Karte.
+
+So funktioniert es technisch: Die Positionen laufen über einen kostenlosen,
+öffentlichen **MQTT-Broker** (WebSocket) – kein eigener Server, kein Konto
+nötig. Der Link enthält einen langen Zufalls-Token; nur wer den Link hat,
+sieht den Standort.
+
+> **🔒 Datenschutz:** Der Broker ist öffentlich – gedacht für gelegentliches
+> privates Teilen, nicht für sensible Daten. Beende das Teilen, wenn du fertig
+> bist (die letzte Position wird dann vom Broker gelöscht).
+
+### „Läuft im Hintergrund?"
+
+Ein Web-Browser kann – anders als eine native App – den Standort **nicht
+dauerhaft bei gesperrtem Bildschirm** senden. WanderPlan holt das Maximum
+heraus:
+
+- **Wake Lock**: Solange die App offen ist, bleibt der Bildschirm an und der
+  Standort wird zuverlässig gesendet.
+- Beim Sperren/Wegschalten **pausiert** das Teilen und läuft beim Zurückkehren
+  automatisch weiter.
+- **Installiert** (Zum Home-Bildschirm) läuft es am stabilsten.
+
+## Starten (lokal)
 
 Die App braucht einen einfachen Webserver (ES-Module funktionieren nicht über
 `file://`):
@@ -37,14 +73,16 @@ python3 -m http.server 8000
 
 Dann im Browser öffnen: <http://localhost:8000>
 
-## Wichtig: GPS & Kompass brauchen HTTPS
+## Wichtig: GPS, Kompass & Teilen brauchen HTTPS
 
-Die Sensor-APIs des Browsers (Geolocation, DeviceOrientation) funktionieren
-nur in einem *Secure Context* – also über **HTTPS** oder **localhost**.
+Die Sensor-APIs des Browsers (Geolocation, DeviceOrientation, Wake Lock)
+funktionieren nur in einem *Secure Context* – also über **HTTPS** oder
+**localhost**.
 
 - Lokal testen: `http://localhost:8000` reicht aus.
 - Auf dem Smartphone nutzen: Die Seite über HTTPS bereitstellen, z. B. mit
-  **GitHub Pages** (Repository-Einstellungen → Pages → Branch auswählen).
+  **GitHub Pages** (Repository-Einstellungen → Pages → Source „GitHub
+  Actions"). Diese Repo enthält dafür bereits einen Workflow.
 - Auf iOS muss der Kompass-Zugriff per Tipp auf das Kompass-Symbol bestätigt
   werden (Apple verlangt eine Nutzergeste für Sensor-Berechtigungen).
 
@@ -53,13 +91,13 @@ nur in einem *Secure Context* – also über **HTTPS** oder **localhost**.
 | Aktion | So geht's |
 | --- | --- |
 | Wegpunkt setzen | Auf die Karte tippen |
-| Wegpunkt verschieben | Marker ziehen |
-| Wegpunkt entfernen | Marker antippen |
-| Route umkehren/löschen | Buttons im Tab „Route" |
-| Eigene Position | 📍-Button rechts auf der Karte |
+| Wegpunkt verschieben / entfernen | Marker ziehen / antippen |
+| Panel vergrößern | Griff oben am Panel ziehen oder antippen (3 Größen) |
+| Eigene Position | „Standort" in der Aktionsleiste oder 📍 auf der Karte |
 | Kompass aktivieren | Kompassrose oben rechts antippen |
-| Wanderung aufzeichnen | Tab „Tracking" → „Aufzeichnung starten" |
-| Route/Track speichern | 💾-Button; Verwaltung im Tab „Gespeichert" |
+| Wanderung aufzeichnen | „Aufzeichnen" → „Aufzeichnung starten" |
+| Live-Standort teilen | „Teilen" → „Live-Standort teilen" → Link senden |
+| Hilfe | ❓ oben rechts |
 
 ## Technik
 
@@ -69,21 +107,27 @@ nur in einem *Secure Context* – also über **HTTPS** oder **localhost**.
 | Kacheln | OpenTopoMap, OpenStreetMap |
 | Routing | BRouter-HTTP-API (`brouter.de`), GeoJSON inkl. Höhendaten |
 | Höhendaten (Fallback) | Open-Meteo Elevation API |
-| Sensoren | Geolocation API, DeviceOrientation API |
+| Standort teilen | MQTT über WebSocket ([MQTT.js](https://github.com/mqttjs/MQTT.js), öffentliche Broker mit Fallback) |
+| Sensoren | Geolocation API, DeviceOrientation API, Screen Wake Lock API |
 | Höhenprofil | Eigenes `<canvas>`-Diagramm (`js/elevation.js`) |
 | Persistenz | localStorage (`js/storage.js`) |
+| App/Offline | Web-App-Manifest + Service Worker (`sw.js`) |
 
 ### Dateistruktur
 
 ```
-index.html      Oberfläche (Karte, Panel, Kompass, Höhenmesser)
-css/style.css   Styles (mobile-first, Desktop-Sidebar ab 900 px)
-js/app.js       Verdrahtung von UI und Modulen
-js/map.js       Leaflet-Karte, Wegpunkte, Linien, Positionsmarker
-js/routing.js   BRouter-Anbindung, Luftlinien-Fallback, Statistik
-js/sensors.js   GPS und Kompass
-js/tracking.js  Live-Aufzeichnung
-js/elevation.js Höhenprofil-Canvas
-js/gpx.js       GPX erzeugen/parsen
-js/storage.js   localStorage-Verwaltung
+index.html            Oberfläche (Karte, Bottom-Sheet, Betrachter-Karte, Hilfe)
+manifest.webmanifest  PWA-Manifest
+sw.js                 Service Worker (App-Shell-Cache, Offline-Start)
+icons/                App-Icons
+css/style.css         Styles (mobile-first, Desktop-Sidebar ab 900 px)
+js/app.js             Verdrahtung von UI und Modulen, Bottom-Sheet, Betrachter
+js/map.js             Leaflet-Karte, Wegpunkte, Linien, Positions-/Teilen-Marker
+js/routing.js         BRouter-Anbindung, Luftlinien-Fallback, Statistik
+js/sensors.js         GPS und Kompass
+js/tracking.js        Live-Aufzeichnung
+js/elevation.js       Höhenprofil-Canvas
+js/gpx.js             GPX erzeugen/parsen
+js/storage.js         localStorage-Verwaltung
+js/share.js           Live-Standort teilen (MQTT, Token/Link, Wake Lock)
 ```

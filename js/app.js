@@ -1,5 +1,5 @@
-// WanderPlan – Einstiegspunkt: verdrahtet Karte, Routing, Sensoren,
-// Tracking, Höhenprofil, GPX und Speicherung mit der Oberfläche.
+// WanderPlan – Einstiegspunkt: verdrahtet Karte, Routing, Sensoren, Tracking,
+// Höhenprofil, GPX, Speicherung, Live-Standort-Teilen und die Oberfläche.
 
 import * as mapView from './map.js';
 import { calculateRoute, computeStats, fetchElevations, haversine } from './routing.js';
@@ -8,6 +8,7 @@ import * as tracking from './tracking.js';
 import { ElevationChart } from './elevation.js';
 import { routeToGPX, trackToGPX, parseGPX, downloadGPX } from './gpx.js';
 import * as storage from './storage.js';
+import * as share from './share.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -44,9 +45,25 @@ function fmtEle(m) {
   return m == null ? '–' : `${Math.round(m)} m`;
 }
 
+function fmtAgo(sec) {
+  if (sec < 5) return 'gerade eben';
+  if (sec < 60) return `vor ${Math.round(sec)} s`;
+  const min = Math.floor(sec / 60);
+  return `vor ${min} min`;
+}
+
 const CARDINALS = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
 function cardinal(deg) {
   return CARDINALS[Math.round(deg / 45) % 8];
+}
+
+function bearing(lat1, lon1, lat2, lon2) {
+  const toRad = Math.PI / 180;
+  const dLon = (lon2 - lon1) * toRad;
+  const y = Math.sin(dLon) * Math.cos(lat2 * toRad);
+  const x = Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad)
+    - Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
 // ---------- Toast ----------
@@ -61,21 +78,106 @@ function showToast(msg, { error = false, duration = 3500 } = {}) {
   toastTimer = setTimeout(() => toast.classList.add('hidden'), duration);
 }
 
-// ---------- Tabs & Panel ----------
+// ---------- Bottom-Sheet ----------
+
+const panel = $('panel');
+const mqMobile = window.matchMedia('(max-width: 899px)');
+
+function sheetPx(state) {
+  if (state === 'peek') return 78;
+  if (state === 'full') return Math.round(window.innerHeight * 0.88);
+  return Math.round(window.innerHeight * 0.46);
+}
+
+let sheetState = 'half';
+
+function setSheet(state) {
+  sheetState = state;
+  document.documentElement.style.setProperty('--sheet-h', `${sheetPx(state)}px`);
+  panel.classList.toggle('peek', state === 'peek');
+  setTimeout(() => mapView.map.invalidateSize(), 260);
+}
+
+function ensureExpanded() {
+  if (mqMobile.matches && sheetState === 'peek') setSheet('half');
+}
+
+(function initSheetDrag() {
+  const handle = $('panelHandle');
+  let dragging = false;
+  let startY = 0;
+  let startH = 0;
+  let moved = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (!mqMobile.matches) return;
+    dragging = true;
+    moved = 0;
+    startY = e.clientY;
+    startH = panel.offsetHeight;
+    handle.setPointerCapture(e.pointerId);
+    document.body.classList.add('sheet-dragging');
+    panel.classList.add('sheet-dragging');
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dy = e.clientY - startY;
+    moved = Math.max(moved, Math.abs(dy));
+    const h = Math.min(Math.max(startH - dy, 60), Math.round(window.innerHeight * 0.92));
+    document.documentElement.style.setProperty('--sheet-h', `${h}px`);
+    panel.classList.toggle('peek', h < 120);
+  });
+
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('sheet-dragging');
+    panel.classList.remove('sheet-dragging');
+    if (moved < 6) {
+      // Tap auf den Griff → nächster Zustand
+      setSheet(sheetState === 'peek' ? 'half' : sheetState === 'half' ? 'full' : 'peek');
+      return;
+    }
+    // Zum nächstgelegenen Rastpunkt einrasten
+    const h = panel.offsetHeight;
+    const opts = [['peek', sheetPx('peek')], ['half', sheetPx('half')], ['full', sheetPx('full')]];
+    opts.sort((a, b) => Math.abs(a[1] - h) - Math.abs(b[1] - h));
+    setSheet(opts[0][0]);
+  };
+
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+})();
+
+// ---------- Tabs ----------
+
+function switchToTab(tab) {
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-content').forEach((c) => {
+    c.classList.toggle('hidden', c.id !== `tab-${tab}`);
+  });
+}
 
 document.querySelectorAll('.tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === btn));
-    document.querySelectorAll('.tab-content').forEach((c) => {
-      c.classList.toggle('hidden', c.id !== `tab-${btn.dataset.tab}`);
-    });
-  });
+  btn.addEventListener('click', () => switchToTab(btn.dataset.tab));
 });
 
-$('panelHandle').addEventListener('click', () => {
-  const collapsed = $('panel').classList.toggle('collapsed');
-  document.body.classList.toggle('panel-collapsed-mode', collapsed);
-  setTimeout(() => mapView.map.invalidateSize(), 300);
+// ---------- Aktionsleiste ----------
+
+$('actLocate').addEventListener('click', toggleLocate);
+$('actRecord').addEventListener('click', () => { switchToTab('tracking'); ensureExpanded(); });
+$('actShare').addEventListener('click', () => { switchToTab('share'); ensureExpanded(); });
+
+// ---------- Hilfe-Overlay ----------
+
+function openHelp() { $('helpOverlay').classList.remove('hidden'); }
+function closeHelp() { $('helpOverlay').classList.add('hidden'); }
+
+$('helpBtn').addEventListener('click', openHelp);
+$('helpClose').addEventListener('click', closeHelp);
+$('helpOverlay').addEventListener('click', (e) => {
+  if (e.target === $('helpOverlay')) closeHelp();
 });
 
 // ---------- Höhenprofil ----------
@@ -87,16 +189,13 @@ const chart = new ElevationChart($('elevationChart'), {
 
 // ---------- Routenplanung ----------
 
-let currentRoute = null; // { coords, stats, fallback, source, name? }
+let currentRoute = null;
 let routeRequestId = 0;
 let recalcTimer = null;
 
 function setRouteStatus(text, warn = false) {
   const el = $('routeStatus');
-  if (!text) {
-    el.classList.add('hidden');
-    return;
-  }
+  if (!text) { el.classList.add('hidden'); return; }
   el.textContent = text;
   el.classList.toggle('warn', warn);
   el.classList.remove('hidden');
@@ -137,7 +236,7 @@ async function recalcRoute() {
   const reqId = ++routeRequestId;
   setRouteStatus('Route wird berechnet …');
   const result = await calculateRoute(waypoints, $('profileSelect').value);
-  if (reqId !== routeRequestId) return; // inzwischen neu angefordert
+  if (reqId !== routeRequestId) return;
   showRoute({ ...result, source: 'planned' });
   setRouteStatus(
     result.fallback ? '⚠ Routing-Dienst nicht erreichbar – es wird die Luftlinie angezeigt.' : null,
@@ -223,12 +322,15 @@ $('fileInput').addEventListener('change', async (e) => {
 let follow = false;
 let hadFirstFix = false;
 let lastPosition = null;
+let lastPositionTime = 0;
 
 function setLocateButton() {
-  $('btnLocate').classList.toggle('active', sensors.gpsRunning());
+  const on = sensors.gpsRunning();
+  $('btnLocate').classList.toggle('active', on);
+  $('actLocate').classList.toggle('active', on);
 }
 
-$('btnLocate').addEventListener('click', () => {
+function toggleLocate() {
   if (!sensors.gpsAvailable()) {
     showToast('Dein Browser unterstützt keine Standortabfrage.', { error: true });
     return;
@@ -238,12 +340,19 @@ $('btnLocate').addEventListener('click', () => {
     hadFirstFix = false;
     sensors.startGPS();
     setLocateButton();
-    showToast('GPS wird gestartet …');
+    showToast('Standort wird gesucht …');
   } else if (!follow) {
     follow = true;
     if (lastPosition) {
-      mapView.map.setView([lastPosition.coords.latitude, lastPosition.coords.longitude], Math.max(mapView.map.getZoom(), 15));
+      mapView.map.setView(
+        [lastPosition.coords.latitude, lastPosition.coords.longitude],
+        Math.max(mapView.map.getZoom(), 15)
+      );
     }
+  } else if (share.isSharing() || tracking.getState() === 'recording') {
+    // GPS wird noch gebraucht → nur Folgen aus
+    follow = false;
+    showToast('Karte folgt nicht mehr. GPS bleibt für Teilen/Tracking aktiv.');
   } else {
     sensors.stopGPS();
     follow = false;
@@ -251,9 +360,12 @@ $('btnLocate').addEventListener('click', () => {
     $('gpsChip').classList.add('hidden');
     setLocateButton();
   }
-});
+}
 
-mapView.map.on('dragstart', () => { follow = false; });
+$('btnLocate').addEventListener('click', toggleLocate);
+$('vwLocate').addEventListener('click', toggleLocate);
+
+mapView.map.on('dragstart', () => { follow = false; followShared = false; });
 
 sensors.onPosition((pos) => {
   lastPosition = pos;
@@ -279,13 +391,25 @@ sensors.onPosition((pos) => {
   }
   $('trkSpeed').textContent = fmtSpeed(speed);
   $('trkAltitude').textContent = fmtEle(altitude);
-});
 
-let lastPositionTime = 0;
+  // Live-Standort senden
+  if (share.isSharing()) {
+    share.publishPosition({
+      lat: latitude,
+      lon: longitude,
+      acc: accuracy != null ? Math.round(accuracy) : null,
+      alt: altitude != null ? Math.round(altitude) : null,
+      speed: speed != null && !Number.isNaN(speed) ? speed : null,
+      heading: lastHeading,
+      ts: Date.now(),
+    });
+  }
+
+  if (viewerMode) updateViewerDerived();
+});
 
 sensors.onGPSError((err) => {
   if (err.code === 1) {
-    // Berechtigung verweigert → GPS endgültig stoppen
     sensors.stopGPS();
     setLocateButton();
     let msg = 'Standort-Zugriff verweigert. Bitte in den Browser-Einstellungen erlauben.';
@@ -293,8 +417,6 @@ sensors.onGPSError((err) => {
     showToast(msg, { error: true });
     return;
   }
-  // Vorübergehende Fehler (kein Signal, Timeout): Watch weiterlaufen lassen
-  // und nur melden, wenn längere Zeit keine Position mehr ankam.
   if (Date.now() - lastPositionTime > 15000) {
     showToast('Kein GPS-Signal – Position wird weiter gesucht …');
   }
@@ -342,7 +464,6 @@ function handleHeading(heading) {
   if (lastHeading === null) {
     roseRotation = -heading;
   } else {
-    // kürzesten Drehweg nehmen, damit die Rose bei 359°→0° nicht zurückschnellt
     let delta = heading - lastHeading;
     if (delta > 180) delta -= 360;
     if (delta < -180) delta += 360;
@@ -380,6 +501,7 @@ function updateTrackButtons() {
   $('btnTrackResume').classList.toggle('hidden', state !== 'paused');
   $('btnTrackStop').classList.toggle('hidden', state !== 'recording' && state !== 'paused');
   $('trackFinishRow').classList.toggle('hidden', state !== 'finished');
+  $('actRecord').classList.toggle('active', state === 'recording' || state === 'paused');
 }
 
 function renderTrackStats() {
@@ -403,15 +525,8 @@ $('btnTrackStart').addEventListener('click', () => {
   showToast('Aufzeichnung gestartet – gute Wanderung!');
 });
 
-$('btnTrackPause').addEventListener('click', () => {
-  tracking.pause();
-  updateTrackButtons();
-});
-
-$('btnTrackResume').addEventListener('click', () => {
-  tracking.resume();
-  updateTrackButtons();
-});
+$('btnTrackPause').addEventListener('click', () => { tracking.pause(); updateTrackButtons(); });
+$('btnTrackResume').addEventListener('click', () => { tracking.resume(); updateTrackButtons(); });
 
 $('btnTrackStop').addEventListener('click', () => {
   tracking.stop();
@@ -474,10 +589,86 @@ $('btnTrackDiscard').addEventListener('click', () => {
 });
 
 window.addEventListener('beforeunload', (e) => {
-  if (tracking.getState() === 'recording' || tracking.getState() === 'paused') {
+  if (tracking.getState() === 'recording' || tracking.getState() === 'paused' || share.isSharing()) {
     e.preventDefault();
   }
 });
+
+// ---------- Live-Standort teilen (Sender) ----------
+
+let shareLink = '';
+
+function setShareStatus(state, text) {
+  const el = $('shareStatus');
+  const map = {
+    connecting: ['status share-status', '⏳ Verbinde mit Server …'],
+    live: ['status share-status ok', '🟢 Standort wird geteilt'],
+    reconnecting: ['status share-status warn', '🔄 Verbindung verloren – neuer Versuch …'],
+    error: ['status share-status err', '⚠ ' + (text || 'Fehler')],
+    waiting: ['status share-status', '⏳ Warte auf GPS-Position …'],
+  };
+  if (state === 'stopped') return;
+  const [cls, defText] = map[state] || ['status share-status', text || ''];
+  el.className = cls;
+  el.textContent = text && state === 'error' ? '⚠ ' + text : defText;
+  $('actShare').classList.toggle('active', share.isSharing());
+}
+
+$('btnShareStart').addEventListener('click', () => {
+  if (!window.isSecureContext) {
+    showToast('Teilen braucht HTTPS. Öffne die Seite über die veröffentlichte HTTPS-Adresse.', { error: true, duration: 6000 });
+    return;
+  }
+  if (!sensors.gpsAvailable()) {
+    showToast('Dein Browser unterstützt keine Standortabfrage.', { error: true });
+    return;
+  }
+  shareLink = share.startSharing({
+    name: $('shareName').value.trim(),
+    onStatus: setShareStatus,
+  });
+  $('shareLink').value = shareLink;
+  $('shareIdle').classList.add('hidden');
+  $('shareActive').classList.remove('hidden');
+  $('actShare').classList.add('active');
+  if (!sensors.gpsRunning()) {
+    sensors.startGPS();
+    setLocateButton();
+  }
+  setShareStatus('waiting');
+  showToast('Teilen gestartet. Schick den Link an deine Begleiter.', { duration: 5000 });
+});
+
+$('btnShareStop').addEventListener('click', () => {
+  share.stopSharing();
+  $('shareActive').classList.add('hidden');
+  $('shareIdle').classList.remove('hidden');
+  $('actShare').classList.remove('active');
+  showToast('Teilen beendet.');
+});
+
+$('btnShareCopy').addEventListener('click', () => copyLink(shareLink));
+$('btnShareNative').addEventListener('click', async () => {
+  const data = { title: 'WanderPlan – mein Live-Standort', text: 'Verfolge meine Wanderung live:', url: shareLink };
+  if (navigator.share) {
+    try { await navigator.share(data); } catch { /* abgebrochen */ }
+  } else {
+    copyLink(shareLink);
+  }
+});
+
+async function copyLink(link) {
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast('Link kopiert.');
+  } catch {
+    const inp = $('shareLink');
+    inp.focus();
+    inp.select();
+    try { document.execCommand('copy'); showToast('Link kopiert.'); }
+    catch { showToast('Bitte Link manuell kopieren.'); }
+  }
+}
 
 // ---------- Gespeicherte Routen & Tracks ----------
 
@@ -493,7 +684,6 @@ function renderList(listEl, items, emptyText, actions) {
   for (const item of items) {
     const li = document.createElement('li');
     li.className = 'item';
-
     const info = document.createElement('div');
     info.className = 'item-info';
     const nameEl = document.createElement('div');
@@ -505,7 +695,6 @@ function renderList(listEl, items, emptyText, actions) {
     metaEl.textContent = `${fmtDistance(item.stats?.distance)} · ${date}`;
     info.append(nameEl, metaEl);
     li.appendChild(info);
-
     for (const [label, title, cls, fn] of actions) {
       const btn = document.createElement('button');
       btn.className = `item-btn ${cls}`;
@@ -518,15 +707,11 @@ function renderList(listEl, items, emptyText, actions) {
   }
 }
 
-function switchToTab(tab) {
-  document.querySelector(`.tab[data-tab="${tab}"]`).click();
-}
-
 function loadSavedRoute(route) {
   switchToTab('route');
+  ensureExpanded();
   if (route.profile) $('profileSelect').value = route.profile;
   if (route.waypoints && route.waypoints.length >= 2) {
-    // Wegpunkte wiederherstellen → Route wird neu berechnet und bleibt editierbar
     mapView.setWaypoints(route.waypoints);
   } else {
     mapView.clearWaypoints({ silent: true });
@@ -553,32 +738,127 @@ function renderSavedLists() {
     ['Laden', 'Route auf der Karte anzeigen', '', loadSavedRoute],
     ['GPX', 'Als GPX-Datei exportieren', '', (r) => downloadGPX(r.name, routeToGPX(r.name, r.coords, r.waypoints || []))],
     ['🗑', 'Route löschen', 'danger', (r) => {
-      if (confirm(`Route „${r.name}“ löschen?`)) {
-        storage.deleteRoute(r.id);
-        renderSavedLists();
-      }
+      if (confirm(`Route „${r.name}“ löschen?`)) { storage.deleteRoute(r.id); renderSavedLists(); }
     }],
   ]);
   renderList($('trackList'), storage.listTracks(), 'Noch keine Tracks aufgezeichnet.', [
     ['Laden', 'Track auf der Karte anzeigen', '', loadSavedTrack],
     ['GPX', 'Als GPX-Datei exportieren', '', (t) => downloadGPX(t.name, trackToGPX(t.name, t.points))],
     ['🗑', 'Track löschen', 'danger', (t) => {
-      if (confirm(`Track „${t.name}“ löschen?`)) {
-        storage.deleteTrack(t.id);
-        renderSavedLists();
-      }
+      if (confirm(`Track „${t.name}“ löschen?`)) { storage.deleteTrack(t.id); renderSavedLists(); }
     }],
   ]);
+}
+
+// ---------- Betrachter-Modus (?share=TOKEN) ----------
+
+let viewerMode = false;
+let followShared = true;
+let sharedData = null;
+let sharedTs = 0;
+let viewerTimer = null;
+let viewerEnded = false;
+
+function initViewer(token) {
+  viewerMode = true;
+  document.body.classList.add('viewer-mode');
+  mapView.setMapClickEnabled(false);
+  $('viewerCard').classList.remove('hidden');
+  $('btnCenterShared').classList.remove('hidden');
+
+  share.startViewing(token, { onMessage: onSharedMessage, onStatus: onViewerStatus });
+
+  $('btnCenterShared').addEventListener('click', () => {
+    if (sharedData) {
+      followShared = true;
+      mapView.panTo(sharedData.lat, sharedData.lon, Math.max(mapView.map.getZoom(), 15));
+    }
+  });
+
+  viewerTimer = setInterval(updateViewerDerived, 1000);
+}
+
+function onSharedMessage(data) {
+  sharedData = data;
+  sharedTs = Date.now();
+  viewerEnded = false;
+  const label = data.name ? `${data.name}` : 'Geteilter Standort';
+  mapView.updateSharedPosition(data.lat, data.lon, data.acc, label);
+  if (data.name) $('viewerTitle').textContent = data.name;
+  if (followShared) {
+    mapView.panTo(data.lat, data.lon, Math.max(mapView.map.getZoom(), 15));
+  }
+  $('vwSpeed').textContent = fmtSpeed(data.speed);
+  $('vwAltitude').textContent = fmtEle(data.alt);
+  updateViewerDerived();
+}
+
+function onViewerStatus(state, text) {
+  const el = $('viewerStatus');
+  const messages = {
+    connecting: 'Verbinde mit Server …',
+    waiting: 'Verbunden – warte auf Standort …',
+    live: null,
+    reconnecting: 'Verbindung unterbrochen – neuer Versuch …',
+    ended: 'Der Sender hat das Teilen beendet.',
+    error: text || 'Verbindungsfehler.',
+  };
+  if (state === 'ended') viewerEnded = true;
+  if (state === 'live') { viewerEnded = false; updateViewerDerived(); return; }
+  const m = messages[state];
+  if (m != null) el.textContent = m;
+}
+
+function updateViewerDerived() {
+  if (!viewerMode) return;
+  if (viewerEnded) return;
+  if (!sharedData) return;
+  const ageSec = (Date.now() - sharedTs) / 1000;
+  $('vwUpdated').textContent = fmtAgo(ageSec);
+
+  const el = $('viewerStatus');
+  if (ageSec > 30) {
+    el.textContent = '⚠ Seit einer Weile keine neue Position – evtl. Bildschirm aus oder offline.';
+  } else {
+    el.textContent = '🟢 Live – Standort aktuell.';
+  }
+
+  if (lastPosition) {
+    const d = haversine(
+      lastPosition.coords.latitude, lastPosition.coords.longitude,
+      sharedData.lat, sharedData.lon
+    );
+    const b = bearing(
+      lastPosition.coords.latitude, lastPosition.coords.longitude,
+      sharedData.lat, sharedData.lon
+    );
+    $('vwDistance').textContent = `${fmtDistance(d)} ${cardinal(b)}`;
+  } else {
+    $('vwDistance').textContent = 'Standort teilen →';
+  }
+}
+
+// ---------- Service Worker (PWA) ----------
+
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* offline-Funktion optional */ });
+  });
 }
 
 // ---------- Start ----------
 
 renderSavedLists();
 updateTrackButtons();
+setSheet('half');
 
-if (!window.isSecureContext) {
-  showToast('Hinweis: GPS und Kompass funktionieren nur über HTTPS oder localhost.', { duration: 6000 });
-} else if (!localStorage.getItem('wanderplan.seenHint')) {
-  localStorage.setItem('wanderplan.seenHint', '1');
-  showToast('Willkommen! Tippe auf die Karte, um deine erste Route zu planen.', { duration: 6000 });
+const shareToken = new URLSearchParams(location.search).get('share');
+
+if (shareToken) {
+  initViewer(shareToken);
+} else if (!window.isSecureContext) {
+  showToast('Hinweis: GPS, Kompass und Teilen funktionieren nur über HTTPS oder localhost.', { duration: 6000 });
+} else if (!localStorage.getItem('wanderplan.seenHelp')) {
+  localStorage.setItem('wanderplan.seenHelp', '1');
+  openHelp();
 }
