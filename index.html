@@ -2,17 +2,26 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="WanderPlan – Wanderrouten planen mit Karte, GPS, Kompass und Höhenmesser">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="WanderPlan – Wanderrouten planen mit Karte, GPS, Kompass, Höhenmesser und Live-Standort-Teilen">
   <title>WanderPlan – Wander-Routenplaner</title>
+
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🥾</text></svg>">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#2d7d46">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WanderPlan">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🥾 <span>WanderPlan</span></div>
+    <div class="brand">🥾 <span class="brand-name">WanderPlan</span></div>
     <div class="topbar-widgets">
       <div id="altimeter" class="altimeter" title="Höhenmesser – aktuelle Höhe">
         <span class="alt-icon">⛰</span>
@@ -25,6 +34,7 @@
         </span>
       </button>
       <span id="compassText" class="compass-text">–</span>
+      <button id="helpBtn" class="icon-btn" title="Hilfe & Erklärung" aria-label="Hilfe">❓</button>
     </div>
   </header>
 
@@ -32,25 +42,61 @@
     <div id="map"></div>
 
     <div class="map-fabs">
+      <button id="btnCenterShared" class="fab hidden" title="Auf geteilten Standort zentrieren" aria-label="Auf geteilten Standort zentrieren">🎯</button>
       <button id="btnLocate" class="fab" title="Meine Position anzeigen" aria-label="Meine Position anzeigen">📍</button>
     </div>
     <div id="gpsChip" class="gps-chip hidden"></div>
 
+    <!-- Betrachter-Karte (nur im Teil-Link-Modus sichtbar) -->
+    <section id="viewerCard" class="viewer-card hidden">
+      <div class="viewer-head">
+        <span class="viewer-live-dot"></span>
+        <h2 id="viewerTitle">Live-Standort</h2>
+      </div>
+      <p id="viewerStatus" class="viewer-status">Verbinde …</p>
+      <div class="stats-grid stats-grid-2">
+        <div class="stat"><span class="stat-value" id="vwUpdated">–</span><span class="stat-label">Aktualisiert</span></div>
+        <div class="stat"><span class="stat-value" id="vwDistance">–</span><span class="stat-label">Entfernung</span></div>
+        <div class="stat"><span class="stat-value" id="vwSpeed">–</span><span class="stat-label">Tempo</span></div>
+        <div class="stat"><span class="stat-value" id="vwAltitude">–</span><span class="stat-label">Höhe</span></div>
+      </div>
+      <div class="btn-row">
+        <button id="vwLocate" class="btn">📍 Meine Position</button>
+        <a id="vwOpenApp" class="btn" href="./">🥾 App öffnen</a>
+      </div>
+      <p class="viewer-note">Du siehst den live geteilten Standort einer anderen Person. Aktualisiert sich automatisch, solange gesendet wird.</p>
+    </section>
+
+    <!-- Planungs-Panel (Bottom-Sheet) -->
     <section id="panel" class="panel">
-      <button class="panel-handle" id="panelHandle" aria-label="Panel ein-/ausklappen"><span></span></button>
+      <button class="panel-handle" id="panelHandle" aria-label="Panel ziehen / ein- und ausklappen"><span></span></button>
+
+      <div class="action-bar">
+        <button id="actLocate" class="act" aria-label="Meinen Standort anzeigen">
+          <span class="act-ic">📍</span><span class="act-label">Standort</span>
+        </button>
+        <button id="actRecord" class="act" aria-label="Wanderung aufzeichnen">
+          <span class="act-ic">⏺</span><span class="act-label">Aufzeichnen</span>
+        </button>
+        <button id="actShare" class="act" aria-label="Live-Standort teilen">
+          <span class="act-ic">📡</span><span class="act-label">Teilen</span>
+        </button>
+      </div>
+
       <nav class="tabs">
-        <button class="tab active" data-tab="route">Route</button>
-        <button class="tab" data-tab="tracking">Tracking</button>
-        <button class="tab" data-tab="saved">Gespeichert</button>
+        <button class="tab active" data-tab="route">🗺 Route</button>
+        <button class="tab" data-tab="tracking">⏱ Tracking</button>
+        <button class="tab" data-tab="share">📡 Teilen</button>
+        <button class="tab" data-tab="saved">📁 Gespeichert</button>
       </nav>
 
       <div class="tab-content" id="tab-route">
-        <p class="hint">Tippe auf die Karte, um Wegpunkte zu setzen. Marker ziehen = verschieben, Marker antippen = entfernen.</p>
+        <p class="hint">👉 Tippe auf die Karte, um <b>Wegpunkte</b> zu setzen. Die Route wird automatisch über Wanderwege berechnet. Marker <b>ziehen</b> = verschieben, <b>antippen</b> = entfernen.</p>
         <div class="field-row">
           <label for="profileSelect">Routing-Profil</label>
           <select id="profileSelect">
             <option value="hiking-mountain" selected>Wandern (Gebirge)</option>
-            <option value="trekking">Trekking</option>
+            <option value="trekking">Trekking / Wege</option>
             <option value="shortest">Kürzester Weg</option>
           </select>
         </div>
@@ -72,14 +118,14 @@
         </div>
         <div class="btn-row">
           <button id="btnSaveRoute" class="btn btn-primary">💾 Speichern</button>
-          <button id="btnExportRoute" class="btn">⬇ GPX-Export</button>
+          <button id="btnExportRoute" class="btn">⬇ GPX</button>
           <button id="btnImport" class="btn">⬆ GPX laden</button>
           <input type="file" id="fileInput" accept=".gpx,application/gpx+xml" hidden>
         </div>
       </div>
 
       <div class="tab-content hidden" id="tab-tracking">
-        <p class="hint">Zeichne deine Wanderung live auf. Das GPS wird beim Start automatisch aktiviert.</p>
+        <p class="hint">⏱ Zeichne deine Wanderung live auf. GPS startet automatisch. Für beste Ergebnisse den <b>Bildschirm anlassen</b>.</p>
         <div class="stats-grid stats-grid-3">
           <div class="stat"><span class="stat-value" id="trkDuration">–</span><span class="stat-label">Dauer</span></div>
           <div class="stat"><span class="stat-value" id="trkDistance">–</span><span class="stat-label">Distanz</span></div>
@@ -101,6 +147,33 @@
         </div>
       </div>
 
+      <div class="tab-content hidden" id="tab-share">
+        <p class="hint">📡 Teile deinen <b>Live-Standort</b> per Link. Wer den Link öffnet, sieht auf der Karte, wo du gerade bist – ideal, damit Freunde oder Familie deine Wanderung mitverfolgen.</p>
+
+        <div id="shareIdle">
+          <div class="field-row">
+            <label for="shareName">Dein Name</label>
+            <input type="text" id="shareName" placeholder="optional, z. B. Alex" maxlength="30">
+          </div>
+          <button id="btnShareStart" class="btn btn-primary btn-lg">📡 Live-Standort teilen</button>
+          <p class="fineprint">🔒 <b>Datenschutz:</b> Die Positionsdaten laufen über einen kostenlosen öffentlichen Server. Nur wer den Link kennt, sieht deinen Standort. Beende das Teilen, wenn du fertig bist. Nicht für sensible Zwecke gedacht.</p>
+        </div>
+
+        <div id="shareActive" class="hidden">
+          <div id="shareStatus" class="status share-status">Verbinde …</div>
+          <label class="link-label" for="shareLink">Dein Teil-Link:</label>
+          <div class="link-row">
+            <input type="text" id="shareLink" readonly>
+            <button id="btnShareCopy" class="btn" title="Link kopieren">📋</button>
+          </div>
+          <div class="btn-row">
+            <button id="btnShareNative" class="btn btn-primary">📤 Link teilen</button>
+            <button id="btnShareStop" class="btn btn-danger">■ Teilen beenden</button>
+          </div>
+          <p id="shareWakeNote" class="fineprint">💡 Solange WanderPlan geöffnet und der Bildschirm an ist, wird dein Standort geteilt. Beim Sperren des Bildschirms pausiert das Teilen und läuft beim Zurückkehren automatisch weiter. Tipp: <b>„Zum Home-Bildschirm hinzufügen"</b> für längeren Betrieb.</p>
+        </div>
+      </div>
+
       <div class="tab-content hidden" id="tab-saved">
         <h3>Gespeicherte Routen</h3>
         <ul id="routeList" class="item-list"></ul>
@@ -110,10 +183,40 @@
     </section>
   </main>
 
+  <!-- Hilfe-Overlay -->
+  <div id="helpOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <button id="helpClose" class="overlay-close" aria-label="Schließen">✕</button>
+      <h2>🥾 So funktioniert WanderPlan</h2>
+      <div class="help-section">
+        <h3>🗺 Route planen</h3>
+        <p>Tippe auf die Karte, um Wegpunkte zu setzen. Die Route folgt automatisch echten Wanderwegen. Du siehst Distanz, Höhenmeter, Gehzeit und ein Höhenprofil. Speichern oder als GPX exportieren (für Garmin, Komoot &amp; Co.).</p>
+      </div>
+      <div class="help-section">
+        <h3>📍 Standort, 🧭 Kompass &amp; ⛰ Höhe</h3>
+        <p>Mit „Standort" zeigst du deine Position auf der Karte. Tippe auf die Kompassrose oben, um den Kompass zu aktivieren (am Handy). Die Höhe kommt vom GPS bzw. aus Geländedaten.</p>
+      </div>
+      <div class="help-section">
+        <h3>⏱ Aufzeichnen</h3>
+        <p>Zeichne deine Wanderung live auf: zurückgelegter Weg, Distanz, Tempo und Höhenmeter. Danach speichern oder als GPX exportieren.</p>
+      </div>
+      <div class="help-section">
+        <h3>📡 Live-Standort teilen</h3>
+        <p>Erzeuge einen Link und schicke ihn an andere. Sie sehen live auf der Karte, wo du gerade bist. Nur mit dem Link sichtbar. Bildschirm anlassen für zuverlässiges Senden.</p>
+      </div>
+      <div class="help-section">
+        <h3>📲 Installieren</h3>
+        <p>Über das Browser-Menü „Zur Startseite / Zum Home-Bildschirm hinzufügen" läuft WanderPlan wie eine App – auch offline für bereits geladene Karten.</p>
+      </div>
+      <p class="fineprint">Hinweis: GPS &amp; Kompass funktionieren nur über HTTPS (oder localhost). Ein Web-Browser kann Standort nicht dauerhaft im gesperrten Hintergrund senden – dafür bleibt der Bildschirm an.</p>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden" role="status"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

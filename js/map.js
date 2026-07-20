@@ -239,3 +239,46 @@ export function hideHighlight() {
     highlightMarker = null;
   }
 }
+
+// ---------- Geteilte Position (von jemand anderem) ----------
+
+let sharedMarker = null;
+let sharedAccCircle = null;
+
+export function updateSharedPosition(lat, lng, accuracy, label) {
+  if (!sharedMarker) {
+    sharedMarker = L.marker([lat, lng], {
+      interactive: true,
+      keyboard: false,
+      icon: L.divIcon({
+        className: 'shared-icon',
+        html: '<div class="shared-pulse"></div><div class="shared-dot">🥾</div>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      }),
+      zIndexOffset: 1000,
+    }).addTo(map);
+    sharedAccCircle = L.circle([lat, lng], {
+      radius: accuracy || 0,
+      weight: 1,
+      color: '#8e24aa',
+      fillColor: '#8e24aa',
+      fillOpacity: 0.12,
+      interactive: false,
+    }).addTo(map);
+  } else {
+    sharedMarker.setLatLng([lat, lng]);
+    sharedAccCircle.setLatLng([lat, lng]);
+    sharedAccCircle.setRadius(accuracy || 0);
+  }
+  if (label) sharedMarker.bindTooltip(label, { direction: 'top', offset: [0, -14] });
+}
+
+export function removeSharedPosition() {
+  if (sharedMarker) { sharedMarker.remove(); sharedMarker = null; }
+  if (sharedAccCircle) { sharedAccCircle.remove(); sharedAccCircle = null; }
+}
+
+export function panTo(lat, lng, zoom) {
+  map.setView([lat, lng], zoom || map.getZoom());
+}
