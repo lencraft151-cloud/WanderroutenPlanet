@@ -9,7 +9,17 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **3D-Karte** (MapLibre GL): moderner Vektor-Stil ([OpenFreeMap](https://openfreemap.org),
   kostenlos, kein API-Key) über echtem **3D-Gelände** (Höhenmodell aus
   Terrarium-DEM) mit Hillshade, Himmel und 3D-Gebäuden – frei **neig- und
-  drehbar** (zwei Finger), inkl. **2D/3D-Umschalter**.
+  drehbar** (zwei Finger), inkl. **2D/3D-Umschalter**. **Hell-/Dunkel-Modus**
+  (folgt dem System, umschaltbar) mit passendem dunklen Kartenstil.
+- **Eigener Standort als blauer Punkt** (wie in Navi-Apps): Genauigkeitskreis,
+  Richtungskegel und Namens-Label, automatisch beim Öffnen aktiviert.
+- **🔎 Ortssuche**: Ort, Berg oder Hütte eingeben – die Karte fliegt hin
+  (OpenStreetMap-Nominatim).
+- **🤖 Automatischer Routenplaner**: Route von deinem Standort zum gesuchten
+  oder angetippten Ziel – oder eine **Rundtour** in Wunschlänge.
+- **🌦 Wetter & 🌇 Sonnenuntergang** an der Position: aktuelles Wetter und
+  „noch X Std bis Sonnenuntergang" mit Warnung bei Dämmerung (Open-Meteo).
+- **↩ Zurück zum Start**: Chip mit Richtung und Entfernung zum Startpunkt.
 - **Routenplanung auf echten Wanderwegen**: Tippe auf die Karte, um Wegpunkte
   zu setzen – die Route wird über die kostenlose
   [BRouter](https://brouter.de)-API entlang von Wanderwegen berechnet
@@ -29,7 +39,8 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   Tempo, Höhe).
 - **👥 Gruppen-Wandern**: Ein gemeinsamer Gruppen-Link, unter dem sich mehrere
   Wanderer gegenseitig live auf der Karte sehen (farbige Marker mit Namen,
-  Teilnehmerliste, Standort-Senden per Opt-in).
+  Teilnehmerliste, Standort-Senden per Opt-in). Beim Verfolgen zeigt eine
+  **Luftlinie mit Abstand** die Verbindung zu deinem eigenen blauen Punkt.
 - **🎯 Ankunfts-Alarm**: Beim Verfolgen eines Standorts ein Ziel auf der Karte
   setzen – Benachrichtigung (mit Vibration), sobald die Person dort ankommt.
 - **GPX-Export & -Import**: Routen und Tracks als GPX 1.1 herunterladen oder
@@ -119,6 +130,8 @@ funktionieren nur in einem *Secure Context* – also über **HTTPS** oder
 | Routing | BRouter-HTTP-API (`brouter.de`), GeoJSON inkl. Höhendaten |
 | Höhendaten (Fallback) | Open-Meteo Elevation API |
 | Standort teilen / Gruppe | MQTT über WebSocket ([MQTT.js](https://github.com/mqttjs/MQTT.js), öffentliche Broker mit Fallback) |
+| Ortssuche | OpenStreetMap-Nominatim (keyless) |
+| Wetter & Sonnenzeiten | [Open-Meteo](https://open-meteo.com) Forecast (keyless) |
 | QR-Code | [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (offline) |
 | Sensoren / Alarm | Geolocation, DeviceOrientation, Screen Wake Lock, Notification, Vibration |
 | Höhenprofil | Eigenes `<canvas>`-Diagramm (`js/elevation.js`) |
@@ -141,5 +154,7 @@ js/tracking.js        Live-Aufzeichnung
 js/elevation.js       Höhenprofil-Canvas
 js/gpx.js             GPX erzeugen/parsen
 js/storage.js         localStorage-Verwaltung
+js/search.js          Ortssuche (Nominatim)
+js/weather.js         Wetter & Sonnenzeiten (Open-Meteo)
 js/share.js           Live-Standort teilen (MQTT, Token/Link, Wake Lock)
 ```
