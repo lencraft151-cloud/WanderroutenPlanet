@@ -95,7 +95,7 @@ function setSheet(state) {
   sheetState = state;
   document.documentElement.style.setProperty('--sheet-h', `${sheetPx(state)}px`);
   panel.classList.toggle('peek', state === 'peek');
-  setTimeout(() => mapView.map.invalidateSize(), 260);
+  setTimeout(() => mapView.resize(), 260);
 }
 
 function ensureExpanded() {
@@ -344,9 +344,9 @@ function toggleLocate() {
   } else if (!follow) {
     follow = true;
     if (lastPosition) {
-      mapView.map.setView(
-        [lastPosition.coords.latitude, lastPosition.coords.longitude],
-        Math.max(mapView.map.getZoom(), 15)
+      mapView.setView(
+        lastPosition.coords.latitude, lastPosition.coords.longitude,
+        Math.max(mapView.getZoom(), 15)
       );
     }
   } else if (share.isSharing() || tracking.getState() === 'recording') {
@@ -365,7 +365,7 @@ function toggleLocate() {
 $('btnLocate').addEventListener('click', toggleLocate);
 $('vwLocate').addEventListener('click', toggleLocate);
 
-mapView.map.on('dragstart', () => { follow = false; followShared = false; });
+mapView.onDragStart(() => { follow = false; followShared = false; });
 
 sensors.onPosition((pos) => {
   lastPosition = pos;
@@ -374,8 +374,8 @@ sensors.onPosition((pos) => {
   mapView.updatePosition(latitude, longitude, accuracy);
 
   if (follow) {
-    const zoom = hadFirstFix ? mapView.map.getZoom() : 15;
-    mapView.map.setView([latitude, longitude], zoom);
+    const zoom = hadFirstFix ? mapView.getZoom() : 15;
+    mapView.setView(latitude, longitude, zoom);
   }
   hadFirstFix = true;
 
@@ -392,20 +392,21 @@ sensors.onPosition((pos) => {
   $('trkSpeed').textContent = fmtSpeed(speed);
   $('trkAltitude').textContent = fmtEle(altitude);
 
-  // Live-Standort senden
-  if (share.isSharing()) {
-    share.publishPosition({
-      lat: latitude,
-      lon: longitude,
-      acc: accuracy != null ? Math.round(accuracy) : null,
-      alt: altitude != null ? Math.round(altitude) : null,
-      speed: speed != null && !Number.isNaN(speed) ? speed : null,
-      heading: lastHeading,
-      ts: Date.now(),
-    });
-  }
+  // Live-Standort senden (solo oder Gruppe)
+  const outPos = {
+    lat: latitude,
+    lon: longitude,
+    acc: accuracy != null ? Math.round(accuracy) : null,
+    alt: altitude != null ? Math.round(altitude) : null,
+    speed: speed != null && !Number.isNaN(speed) ? speed : null,
+    heading: lastHeading,
+    ts: Date.now(),
+  };
+  if (share.isSharing()) share.publishPosition(outPos);
+  if (share.inGroup()) share.publishGroupPosition(outPos);
 
   if (viewerMode) updateViewerDerived();
+  updateTargetChip();
 });
 
 sensors.onGPSError((err) => {
@@ -628,6 +629,7 @@ $('btnShareStart').addEventListener('click', () => {
     onStatus: setShareStatus,
   });
   $('shareLink').value = shareLink;
+  renderQR('shareQr', shareLink);
   $('shareIdle').classList.add('hidden');
   $('shareActive').classList.remove('hidden');
   $('actShare').classList.add('active');
@@ -657,14 +659,13 @@ $('btnShareNative').addEventListener('click', async () => {
   }
 });
 
-async function copyLink(link) {
+async function copyLink(link, inputSel = '#shareLink') {
   try {
     await navigator.clipboard.writeText(link);
     showToast('Link kopiert.');
   } catch {
-    const inp = $('shareLink');
-    inp.focus();
-    inp.select();
+    const inp = document.querySelector(inputSel);
+    if (inp) { inp.focus(); inp.select(); }
     try { document.execCommand('copy'); showToast('Link kopiert.'); }
     catch { showToast('Bitte Link manuell kopieren.'); }
   }
@@ -765,13 +766,14 @@ function initViewer(token) {
   mapView.setMapClickEnabled(false);
   $('viewerCard').classList.remove('hidden');
   $('btnCenterShared').classList.remove('hidden');
+  $('btnTarget').classList.remove('hidden');
 
   share.startViewing(token, { onMessage: onSharedMessage, onStatus: onViewerStatus });
 
   $('btnCenterShared').addEventListener('click', () => {
     if (sharedData) {
       followShared = true;
-      mapView.panTo(sharedData.lat, sharedData.lon, Math.max(mapView.map.getZoom(), 15));
+      mapView.panTo(sharedData.lat, sharedData.lon, Math.max(mapView.getZoom(), 15));
     }
   });
 
@@ -786,11 +788,12 @@ function onSharedMessage(data) {
   mapView.updateSharedPosition(data.lat, data.lon, data.acc, label);
   if (data.name) $('viewerTitle').textContent = data.name;
   if (followShared) {
-    mapView.panTo(data.lat, data.lon, Math.max(mapView.map.getZoom(), 15));
+    mapView.panTo(data.lat, data.lon, Math.max(mapView.getZoom(), 15));
   }
   $('vwSpeed').textContent = fmtSpeed(data.speed);
   $('vwAltitude').textContent = fmtEle(data.alt);
   updateViewerDerived();
+  checkArrival('shared', data.name || 'Wanderer', data.lat, data.lon);
 }
 
 function onViewerStatus(state, text) {
@@ -838,6 +841,236 @@ function updateViewerDerived() {
   }
 }
 
+// ---------- 2D/3D-Umschalter ----------
+
+$('btn3d').addEventListener('click', () => {
+  const now3d = mapView.toggle3D();
+  $('btn3d').classList.toggle('active', now3d);
+  $('btn3d').textContent = now3d ? '🏔' : '🗺';
+  showToast(now3d ? '3D-Geländeansicht' : '2D-Ansicht');
+});
+
+// ---------- QR-Code ----------
+
+function renderQR(elId, text) {
+  const el = $(elId);
+  el.innerHTML = '';
+  if (typeof qrcode === 'undefined') return;
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  } catch { /* QR optional */ }
+}
+
+// ---------- Gruppe: mehrere Wanderer ----------
+
+const peers = new Map();       // pid -> { name, color, ts }
+const lastPeerPos = new Map(); // pid -> { lat, lon }
+let groupLink = '';
+let groupPeerTimer = null;
+
+function updateGroupSendBtn(sending) {
+  const btn = $('btnGroupSendToggle');
+  btn.classList.toggle('btn-primary', sending);
+  btn.textContent = sending ? '📍 Senden aktiv – tippen zum Stoppen' : '📍 Meinen Standort senden';
+}
+
+function setGroupStatus(state, text) {
+  const el = $('groupStatus');
+  const m = {
+    connecting: ['status share-status', '⏳ Verbinde mit Server …'],
+    live: ['status share-status ok', '🟢 Mit Gruppe verbunden'],
+    reconnecting: ['status share-status warn', '🔄 Verbindung verloren – neuer Versuch …'],
+    error: ['status share-status err', '⚠ ' + (text || 'Fehler')],
+  };
+  if (state === 'stopped') return;
+  const [cls, def] = m[state] || ['status share-status', text || ''];
+  el.className = cls;
+  el.textContent = def;
+}
+
+function enterGroupUI(link, sending) {
+  groupLink = link;
+  switchToTab('share');
+  ensureExpanded();
+  $('shareIdle').classList.add('hidden');
+  $('shareActive').classList.add('hidden');
+  $('groupActive').classList.remove('hidden');
+  $('groupLink').value = link;
+  renderQR('groupQr', link);
+  $('actShare').classList.add('active');
+  $('btnCenterShared').classList.remove('hidden');
+  $('btnTarget').classList.remove('hidden');
+  updateGroupSendBtn(sending);
+  if (sending && !sensors.gpsRunning()) { sensors.startGPS(); setLocateButton(); }
+  if (!groupPeerTimer) groupPeerTimer = setInterval(prunePeers, 5000);
+}
+
+function onPeer(data) {
+  if (data.isSelf) return;
+  peers.set(data.pid, { name: data.name || 'Wanderer', color: data.color || '#8e24aa', ts: Date.now() });
+  lastPeerPos.set(data.pid, { lat: data.lat, lon: data.lon });
+  mapView.updatePeer(data.pid, { lat: data.lat, lng: data.lon, color: data.color, name: data.name });
+  renderPeerList();
+  checkArrival(data.pid, data.name || 'Wanderer', data.lat, data.lon);
+}
+
+function onPeerLeft(pid) {
+  peers.delete(pid);
+  lastPeerPos.delete(pid);
+  mapView.removePeer(pid);
+  renderPeerList();
+}
+
+function prunePeers() {
+  const now = Date.now();
+  for (const [pid, p] of peers) {
+    if (now - p.ts > 60000) { peers.delete(pid); lastPeerPos.delete(pid); mapView.removePeer(pid); }
+  }
+  renderPeerList();
+}
+
+function renderPeerList() {
+  const ul = $('peerList');
+  ul.innerHTML = '';
+  if (peers.size === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'Noch niemand sonst sichtbar – teile den Link!';
+    ul.appendChild(li);
+    return;
+  }
+  for (const [, p] of peers) {
+    const li = document.createElement('li');
+    li.className = 'item';
+    const dot = document.createElement('span');
+    dot.className = 'peer-swatch';
+    dot.style.background = p.color;
+    const info = document.createElement('div');
+    info.className = 'item-info';
+    const ago = Math.round((Date.now() - p.ts) / 1000);
+    info.innerHTML = `<div class="item-name"></div><div class="item-meta">aktiv vor ${ago} s</div>`;
+    info.querySelector('.item-name').textContent = p.name;
+    li.append(dot, info);
+    ul.appendChild(li);
+  }
+}
+
+$('btnGroupStart').addEventListener('click', () => {
+  if (!window.isSecureContext) { showToast('Teilen braucht HTTPS.', { error: true }); return; }
+  const link = share.startGroup({ name: $('shareName').value.trim(), share: true, onStatus: setGroupStatus, onPeer, onPeerLeft });
+  enterGroupUI(link, true);
+  showToast('Gruppe gestartet. Schick den Link an deine Begleiter.', { duration: 5000 });
+});
+
+$('btnGroupSendToggle').addEventListener('click', () => {
+  const nowSending = !share.getGroupInfo().sharing;
+  share.setGroupSharing(nowSending);
+  updateGroupSendBtn(nowSending);
+  showToast(nowSending ? 'Dein Standort wird jetzt mitgeteilt.' : 'Standort-Senden gestoppt.');
+  if (nowSending && !sensors.gpsRunning()) { sensors.startGPS(); setLocateButton(); }
+});
+
+$('btnGroupLeave').addEventListener('click', () => {
+  share.stopGroup();
+  mapView.clearPeers();
+  peers.clear();
+  lastPeerPos.clear();
+  clearInterval(groupPeerTimer); groupPeerTimer = null;
+  $('groupActive').classList.add('hidden');
+  $('shareIdle').classList.remove('hidden');
+  $('actShare').classList.remove('active');
+  showToast('Gruppe verlassen.');
+});
+
+$('btnGroupCopy').addEventListener('click', () => copyLink(groupLink, '#groupLink'));
+$('btnGroupShareNative').addEventListener('click', async () => {
+  const d = { title: 'WanderPlan – Gruppen-Wanderung', text: 'Wandert mit oder verfolgt uns live:', url: groupLink };
+  if (navigator.share) { try { await navigator.share(d); } catch { /* abgebrochen */ } }
+  else copyLink(groupLink, '#groupLink');
+});
+
+// ---------- Ziel & Ankunfts-Benachrichtigung ----------
+
+let targetPoint = null; // { lat, lon, radius }
+const TARGET_RADIUS = 150;
+const arrived = new Set();
+
+$('btnTarget').addEventListener('click', async () => {
+  if (targetPoint) { clearTarget(); return; }
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { await Notification.requestPermission(); } catch {}
+  }
+  showToast('Tippe auf die Karte, um das Ziel zu setzen.', { duration: 5000 });
+  mapView.setClickHandler((ll) => {
+    mapView.setClickHandler(null);
+    targetPoint = { lat: ll.lat, lon: ll.lng, radius: TARGET_RADIUS };
+    arrived.clear();
+    mapView.setTarget(ll.lat, ll.lng, TARGET_RADIUS);
+    $('btnTarget').classList.add('active');
+    updateTargetChip();
+    showToast('Ziel gesetzt – Benachrichtigung bei Ankunft (150 m).', { duration: 4000 });
+  });
+});
+
+function clearTarget() {
+  targetPoint = null;
+  arrived.clear();
+  mapView.clearTarget();
+  mapView.setClickHandler(null);
+  $('btnTarget').classList.remove('active');
+  $('targetChip').classList.add('hidden');
+}
+
+$('targetChip').addEventListener('click', clearTarget);
+
+function updateTargetChip() {
+  const chip = $('targetChip');
+  if (!targetPoint) { chip.classList.add('hidden'); return; }
+  let best = null;
+  const consider = (name, lat, lon) => {
+    const d = haversine(lat, lon, targetPoint.lat, targetPoint.lon);
+    if (!best || d < best.d) best = { d, name };
+  };
+  if (sharedData) consider(sharedData.name || 'Wanderer', sharedData.lat, sharedData.lon);
+  for (const [pid, p] of peers) { const m = lastPeerPos.get(pid); if (m) consider(p.name, m.lat, m.lon); }
+  if (!best && lastPosition) consider('Du', lastPosition.coords.latitude, lastPosition.coords.longitude);
+  chip.textContent = best ? `🎯 ${best.name}: ${fmtDistance(best.d)}  ✕` : '🎯 Ziel gesetzt  ✕';
+  chip.classList.remove('hidden');
+}
+
+function checkArrival(id, name, lat, lon) {
+  if (!targetPoint) return;
+  const d = haversine(lat, lon, targetPoint.lat, targetPoint.lon);
+  if (d <= targetPoint.radius && !arrived.has(id)) {
+    arrived.add(id);
+    notify('🎯 Angekommen!', `${name} ist am Ziel angekommen.`);
+  } else if (d > targetPoint.radius * 1.4) {
+    arrived.delete(id);
+  }
+  updateTargetChip();
+}
+
+function notify(title, body) {
+  showToast(`${title} ${body}`, { duration: 6000 });
+  if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch {} }
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try { new Notification(title, { body, icon: 'icons/icon-192.png' }); } catch {}
+  }
+}
+
+// Center-Button: Solo → geteilte Position; Gruppe → alle Teilnehmer einpassen.
+$('btnCenterShared').addEventListener('click', () => {
+  if (share.inGroup() && lastPeerPos.size > 0) {
+    const pts = [...lastPeerPos.values()].map((m) => [m.lat, m.lon]);
+    if (lastPosition) pts.push([lastPosition.coords.latitude, lastPosition.coords.longitude]);
+    if (pts.length >= 2) mapView.fitToCoords(pts);
+    else mapView.panTo(pts[0][0], pts[0][1], Math.max(mapView.getZoom(), 15));
+  }
+});
+
 // ---------- Service Worker (PWA) ----------
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
@@ -852,10 +1085,18 @@ renderSavedLists();
 updateTrackButtons();
 setSheet('half');
 
-const shareToken = new URLSearchParams(location.search).get('share');
+const urlParams = new URLSearchParams(location.search);
+const shareToken = urlParams.get('share');
+const groupToken = urlParams.get('group');
 
 if (shareToken) {
   initViewer(shareToken);
+} else if (groupToken) {
+  // Gruppen-Link geöffnet: beitreten (zuschauen), Senden per Opt-in.
+  const link = share.startGroup({ token: groupToken, share: false, onStatus: setGroupStatus, onPeer, onPeerLeft });
+  renderPeerList();
+  enterGroupUI(link, false);
+  showToast('Du bist der Gruppe beigetreten. „Meinen Standort senden" macht dich sichtbar.', { duration: 6000 });
 } else if (!window.isSecureContext) {
   showToast('Hinweis: GPS, Kompass und Teilen funktionieren nur über HTTPS oder localhost.', { duration: 6000 });
 } else if (!localStorage.getItem('wanderplan.seenHelp')) {

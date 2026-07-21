@@ -6,8 +6,10 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 
 ## Funktionen
 
-- **Interaktive Karte** (Leaflet) mit umschaltbaren Layern:
-  OpenTopoMap (Wanderkarte) und OpenStreetMap
+- **3D-Karte** (MapLibre GL): moderner Vektor-Stil ([OpenFreeMap](https://openfreemap.org),
+  kostenlos, kein API-Key) über echtem **3D-Gelände** (Höhenmodell aus
+  Terrarium-DEM) mit Hillshade, Himmel und 3D-Gebäuden – frei **neig- und
+  drehbar** (zwei Finger), inkl. **2D/3D-Umschalter**.
 - **Routenplanung auf echten Wanderwegen**: Tippe auf die Karte, um Wegpunkte
   zu setzen – die Route wird über die kostenlose
   [BRouter](https://brouter.de)-API entlang von Wanderwegen berechnet
@@ -22,8 +24,14 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   [Open-Meteo](https://open-meteo.com)-Elevation-API
 - **Live-Tracking**: Wanderung aufzeichnen mit Dauer, Distanz, Tempo und
   Höhenmetern (Start/Pause/Stopp)
-- **📡 Live-Standort teilen**: Erzeuge einen Link – wer ihn öffnet, sieht live
-  auf der Karte, wo du gerade bist (Entfernung, Richtung, Tempo, Höhe).
+- **📡 Live-Standort teilen**: Erzeuge einen Link (inkl. **QR-Code**) – wer ihn
+  öffnet, sieht live auf der Karte, wo du gerade bist (Entfernung, Richtung,
+  Tempo, Höhe).
+- **👥 Gruppen-Wandern**: Ein gemeinsamer Gruppen-Link, unter dem sich mehrere
+  Wanderer gegenseitig live auf der Karte sehen (farbige Marker mit Namen,
+  Teilnehmerliste, Standort-Senden per Opt-in).
+- **🎯 Ankunfts-Alarm**: Beim Verfolgen eines Standorts ein Ziel auf der Karte
+  setzen – Benachrichtigung (mit Vibration), sobald die Person dort ankommt.
 - **GPX-Export & -Import**: Routen und Tracks als GPX 1.1 herunterladen oder
   bestehende GPX-Dateien laden (kompatibel mit Garmin, Komoot & Co.)
 - **Lokales Speichern**: Routen und Tracks werden im Browser (localStorage)
@@ -95,20 +103,24 @@ funktionieren nur in einem *Secure Context* – also über **HTTPS** oder
 | Panel vergrößern | Griff oben am Panel ziehen oder antippen (3 Größen) |
 | Eigene Position | „Standort" in der Aktionsleiste oder 📍 auf der Karte |
 | Kompass aktivieren | Kompassrose oben rechts antippen |
+| 2D/3D umschalten | ⛰-Button rechts auf der Karte; zwei Finger = neigen/drehen |
 | Wanderung aufzeichnen | „Aufzeichnen" → „Aufzeichnung starten" |
-| Live-Standort teilen | „Teilen" → „Live-Standort teilen" → Link senden |
+| Live-Standort teilen | „Teilen" → „Alleine teilen" bzw. „Gruppe starten" → Link/QR senden |
+| Ankunfts-Alarm | Beim Verfolgen: 🎯-Button → Ziel auf der Karte antippen |
 | Hilfe | ❓ oben rechts |
 
 ## Technik
 
 | Bereich | Lösung |
 | --- | --- |
-| Karte | [Leaflet 1.9](https://leafletjs.com) via CDN |
-| Kacheln | OpenTopoMap, OpenStreetMap |
+| Karte | [MapLibre GL JS](https://maplibre.org) (WebGL, 3D) via CDN |
+| Kartenstil | [OpenFreeMap](https://openfreemap.org) „liberty" (Vektor, keyless) |
+| 3D-Gelände | Terrarium-DEM ([Terrain Tiles](https://registry.opendata.aws/terrain-tiles/), keyless) + Hillshade |
 | Routing | BRouter-HTTP-API (`brouter.de`), GeoJSON inkl. Höhendaten |
 | Höhendaten (Fallback) | Open-Meteo Elevation API |
-| Standort teilen | MQTT über WebSocket ([MQTT.js](https://github.com/mqttjs/MQTT.js), öffentliche Broker mit Fallback) |
-| Sensoren | Geolocation API, DeviceOrientation API, Screen Wake Lock API |
+| Standort teilen / Gruppe | MQTT über WebSocket ([MQTT.js](https://github.com/mqttjs/MQTT.js), öffentliche Broker mit Fallback) |
+| QR-Code | [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (offline) |
+| Sensoren / Alarm | Geolocation, DeviceOrientation, Screen Wake Lock, Notification, Vibration |
 | Höhenprofil | Eigenes `<canvas>`-Diagramm (`js/elevation.js`) |
 | Persistenz | localStorage (`js/storage.js`) |
 | App/Offline | Web-App-Manifest + Service Worker (`sw.js`) |
@@ -121,8 +133,8 @@ manifest.webmanifest  PWA-Manifest
 sw.js                 Service Worker (App-Shell-Cache, Offline-Start)
 icons/                App-Icons
 css/style.css         Styles (mobile-first, Desktop-Sidebar ab 900 px)
-js/app.js             Verdrahtung von UI und Modulen, Bottom-Sheet, Betrachter
-js/map.js             Leaflet-Karte, Wegpunkte, Linien, Positions-/Teilen-Marker
+js/app.js             Verdrahtung von UI und Modulen, Bottom-Sheet, Betrachter, Gruppe, Ziel
+js/map.js             MapLibre-3D-Karte (Gelände/Gebäude), Marker, Linien, Peers, Ziel
 js/routing.js         BRouter-Anbindung, Luftlinien-Fallback, Statistik
 js/sensors.js         GPS und Kompass
 js/tracking.js        Live-Aufzeichnung
