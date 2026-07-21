@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WanderPlan-Markenfarben (aus manifest.webmanifest, theme_color #2d7d46) -->
+    <color name="brand">#2d7d46</color>
+    <color name="brand_dark">#1b5e20</color>
+    <color name="bg">#0e1512</color>
+    <color name="white">#ffffff</color>
+    <color name="black">#000000</color>
+</resources>

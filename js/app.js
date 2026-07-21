@@ -663,16 +663,36 @@ $('btnShareStart').addEventListener('click', () => {
     setLocateButton();
   }
   setShareStatus('waiting');
+  nativeStartShare('solo', share.getShareToken());
   showToast('Teilen gestartet. Schick den Link an deine Begleiter.', { duration: 5000 });
 });
 
 $('btnShareStop').addEventListener('click', () => {
   share.stopSharing();
+  nativeStopShare();
   $('shareActive').classList.add('hidden');
   $('shareIdle').classList.remove('hidden');
   $('actShare').classList.remove('active');
   showToast('Teilen beendet.');
 });
+
+// ---------- Brücke zur nativen Android-App (Hintergrund-Standort) ----------
+// Im Browser ist WanderPlanNative undefined → No-op. In der App übernimmt der
+// native Vordergrund-Dienst zusätzlich das Publizieren – auch im Hintergrund.
+function nativeStartShare(mode, token, extra = {}) {
+  try {
+    if (window.WanderPlanNative && typeof WanderPlanNative.startShare === 'function') {
+      WanderPlanNative.startShare(JSON.stringify({ mode, token, name: getOwnName(), ...extra }));
+    }
+  } catch { /* ignore */ }
+}
+function nativeStopShare() {
+  try {
+    if (window.WanderPlanNative && typeof WanderPlanNative.stopShare === 'function') {
+      WanderPlanNative.stopShare();
+    }
+  } catch { /* ignore */ }
+}
 
 $('btnShareCopy').addEventListener('click', () => copyLink(shareLink));
 $('btnShareNative').addEventListener('click', async () => {
@@ -991,6 +1011,8 @@ $('btnGroupStart').addEventListener('click', () => {
   if (!window.isSecureContext) { showToast('Teilen braucht HTTPS.', { error: true }); return; }
   const link = share.startGroup({ name: $('shareName').value.trim(), share: true, onStatus: setGroupStatus, onPeer, onPeerLeft });
   enterGroupUI(link, true);
+  const info = share.getGroupInfo();
+  nativeStartShare('group', info.token, { pid: info.pid });
   showToast('Gruppe gestartet. Schick den Link an deine Begleiter.', { duration: 5000 });
 });
 
@@ -998,12 +1020,16 @@ $('btnGroupSendToggle').addEventListener('click', () => {
   const nowSending = !share.getGroupInfo().sharing;
   share.setGroupSharing(nowSending);
   updateGroupSendBtn(nowSending);
+  const info = share.getGroupInfo();
+  if (nowSending) nativeStartShare('group', info.token, { pid: info.pid });
+  else nativeStopShare();
   showToast(nowSending ? 'Dein Standort wird jetzt mitgeteilt.' : 'Standort-Senden gestoppt.');
   if (nowSending && !sensors.gpsRunning()) { sensors.startGPS(); setLocateButton(); }
 });
 
 $('btnGroupLeave').addEventListener('click', () => {
   share.stopGroup();
+  nativeStopShare();
   mapView.clearPeers();
   peers.clear();
   lastPeerPos.clear();
@@ -1171,6 +1197,16 @@ async function doSearch() {
 
 $('searchBtn').addEventListener('click', doSearch);
 $('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+$('searchInput').addEventListener('input', () => {
+  $('searchClear').classList.toggle('hidden', !$('searchInput').value);
+});
+$('searchClear').addEventListener('click', () => {
+  $('searchInput').value = '';
+  $('searchClear').classList.add('hidden');
+  $('searchResults').classList.add('hidden');
+  lastSearchPlace = null;
+  $('searchInput').focus();
+});
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-wrap')) $('searchResults').classList.add('hidden');
 });
@@ -1318,6 +1354,16 @@ applyTheme(storedTheme || (prefersDark ? 'dark' : 'light'));
 renderSavedLists();
 updateTrackButtons();
 setSheet('half');
+
+// Splash ausblenden, sobald die Karte geladen ist (Fallback nach 6 s).
+function hideSplash() {
+  const s = $('splash');
+  if (!s || s.classList.contains('hide')) return;
+  s.classList.add('hide');
+  setTimeout(() => s.remove(), 600);
+}
+mapView.onReady(hideSplash);
+setTimeout(hideSplash, 6000);
 
 const urlParams = new URLSearchParams(location.search);
 const shareToken = urlParams.get('share');

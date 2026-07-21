@@ -44,6 +44,7 @@
     <div class="search-wrap">
       <div class="search-box">
         <input id="searchInput" type="search" placeholder="Ort, Berg oder Hütte suchen …" autocomplete="off" enterkeyhint="search">
+        <button id="searchClear" class="search-clear hidden" title="Leeren" aria-label="Leeren">✕</button>
         <button id="searchBtn" class="search-btn" title="Suchen" aria-label="Suchen">🔎</button>
       </div>
       <ul id="searchResults" class="search-results hidden"></ul>
@@ -260,6 +261,13 @@
       </div>
       <p class="fineprint">Hinweis: GPS, Kompass &amp; Teilen brauchen HTTPS (oder localhost). Ein Browser kann den Standort nicht dauerhaft im gesperrten Hintergrund senden – dafür bleibt der Bildschirm an.</p>
     </div>
+  </div>
+
+  <div id="splash">
+    <div class="splash-logo">🥾</div>
+    <div class="splash-name">WanderPlan</div>
+    <div class="splash-sub">3D-Karte wird geladen …</div>
+    <div class="splash-bar"></div>
   </div>
 
   <div id="toast" class="toast hidden" role="status"></div>

@@ -50,6 +50,12 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **Mobil-optimiert & installierbar**: ziehbares Bottom-Sheet mit Rastpunkten,
   große Touch-Flächen, Hilfe-Overlay und Installation zum Home-Bildschirm (PWA)
   inkl. Offline-Start der App-Oberfläche
+- **Feinschliff**: Marken-**Ladebildschirm** bis die 3D-Karte steht, durchgängig
+  **dunkle Auswahlfelder** im Dark-Mode, **„×"-Löschknopf** in der Ortssuche,
+  saubere Safe-Area-Abstände (wichtig in der Android-App) und
+  Button-Druck-Feedback.
+- **📱 Als native Android-App** installierbar (Play Store oder direkte APK) mit
+  **echtem Standort-Teilen im Hintergrund** – siehe unten.
 
 ## Live-Standort teilen
 
@@ -80,6 +86,31 @@ heraus:
 - Beim Sperren/Wegschalten **pausiert** das Teilen und läuft beim Zurückkehren
   automatisch weiter.
 - **Installiert** (Zum Home-Bildschirm) läuft es am stabilsten.
+
+Für **echtes Teilen im Hintergrund** (Bildschirm aus) gibt es die native
+**Android-App** – siehe unten.
+
+## 📱 Android-App
+
+Es gibt WanderPlan auch als native **Android-App**. Sie lädt dieselbe live
+gehostete Seite (bekommt also automatisch jedes Web-Update) und kann
+**zusätzlich den Live-Standort echt im Hintergrund teilen** – über einen
+Vordergrund-Dienst, auch bei gesperrtem Bildschirm.
+
+- **Google Play**: signiertes **AAB** (`play`-Variante) – der Store übernimmt
+  Updates.
+- **Direkt-Download**: **APK** (`sideload`-Variante), die sich über
+  GitHub-Releases **selbst aktualisiert**. Download-Seite: [`apk/`](apk/) →
+  immer die neueste APK (`…/releases/latest/download/WanderPlan-sideload.apk`).
+
+Das Projekt liegt in [`android-app/`](android-app/); Bauen, Signieren und
+Play-Upload sind in [`android-app/ANDROID.md`](android-app/ANDROID.md)
+beschrieben. Gebaut wird automatisch per GitHub Actions
+(`.github/workflows/android.yml`).
+
+> Die App teilt den Standort ausschließlich für das vom Nutzer gestartete
+> Live-Teilen und nutzt denselben MQTT-Broker/dieselben Topics wie das Web –
+> Web-Betrachter sehen die nativ gesendeten Positionen unverändert.
 
 ## Starten (lokal)
 
@@ -157,4 +188,13 @@ js/storage.js         localStorage-Verwaltung
 js/search.js          Ortssuche (Nominatim)
 js/weather.js         Wetter & Sonnenzeiten (Open-Meteo)
 js/share.js           Live-Standort teilen (MQTT, Token/Link, Wake Lock)
+
+apk/index.html        Download-Seite für die Android-APK (immer neueste Version)
+android-app/          Native Android-App (WebView + Hintergrund-Standort)
+  app/…/MainActivity.kt        Vollbild-WebView, Berechtigungen, JS-Brücke
+  app/…/LocationShareService.kt Vordergrund-Dienst: Standort → MQTT
+  app/…/Mqtt.kt                 Paho-MQTT (gleicher Broker wie Web)
+  app/…/UpdateChecker.kt        Sideload-Selbst-Update (Play: No-op)
+  ANDROID.md                    Bauen, Signieren, Play-Upload, Gerätetest
+.github/workflows/android.yml   CI: baut AAB + Sideload-APK, Release
 ```
