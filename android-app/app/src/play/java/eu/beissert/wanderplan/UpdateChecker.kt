@@ -7,6 +7,7 @@ import android.content.Context
  * Der Selbst-Updater ist hier bewusst ein No-op.
  */
 object UpdateChecker {
+    @Suppress("UNUSED_PARAMETER")
     fun check(context: Context) {
         // Absichtlich leer – Updates laufen über den Play Store.
     }

@@ -62,8 +62,8 @@ class LocationShareService : Service() {
             mode = o.optString("mode", "solo")
             token = o.optString("token", "")
             pid = o.optString("pid", "")
-            name = o.optString("name", null)?.ifBlank { null }
-            color = o.optString("color", null)?.ifBlank { null }
+            name = o.optString("name").takeIf { it.isNotBlank() }
+            color = o.optString("color").takeIf { it.isNotBlank() }
         } catch (_: Exception) {
             stopSelf(); return
         }

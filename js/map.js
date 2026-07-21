@@ -15,6 +15,7 @@ const DEM_TILES = 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{
 
 let currentTheme = 'light';
 let buildings3dOn = true;
+let gradeVisible = false;
 
 export const map = new maplibregl.Map({
   container: 'map',
@@ -139,7 +140,7 @@ function setData(id, data) {
 
 function addOverlayLayers() {
   const add = (id) => { if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: overlayData[id] || EMPTY }); };
-  add('route'); add('track'); add('pos-acc'); add('shared-acc'); add('target'); add('connector');
+  add('route'); add('track'); add('pos-acc'); add('shared-acc'); add('target'); add('connector'); add('route-grade');
 
   if (!map.getLayer('connector-line')) {
     map.addLayer({
@@ -160,6 +161,19 @@ function addOverlayLayers() {
       id: 'track-line', type: 'line', source: 'track',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': '#1565c0', 'line-width': 5, 'line-opacity': 0.9 },
+    });
+  }
+  // Steigungs-Einfärbung (über der normalen Routenlinie, standardmäßig aus).
+  if (!map.getLayer('route-grade-line')) {
+    map.addLayer({
+      id: 'route-grade-line', type: 'line', source: 'route-grade',
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: gradeVisible ? 'visible' : 'none' },
+      paint: {
+        'line-width': 6,
+        'line-opacity': 0.95,
+        'line-color': ['step', ['get', 'grade'],
+          '#2e9e4f', 8, '#8ab800', 15, '#e0a800', 25, '#e07b00', 35, '#d63a2f'],
+      },
     });
   }
   const circleFill = (id, src, color) => {
@@ -459,4 +473,111 @@ export function showHighlight(lat, lng) {
 
 export function hideHighlight() {
   if (highlightMarker) { highlightMarker.remove(); highlightMarker = null; }
+}
+
+// ---------- POI in der Nähe (anklickbare Emoji-Marker) ----------
+
+let poiMarkers = [];
+let poiClickHandler = null;
+
+export function onPoiClick(fn) { poiClickHandler = fn; }
+
+export function setPois(list) {
+  clearPois();
+  poiMarkers = (list || []).map((p) => {
+    const el = document.createElement('div');
+    el.className = 'poi-icon poi-' + p.cat;
+    el.textContent = p.emoji;
+    el.title = p.name;
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([p.lon, p.lat]).addTo(map);
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (poiClickHandler) poiClickHandler(p);
+    });
+    return marker;
+  });
+}
+
+export function clearPois() { poiMarkers.forEach((m) => m.remove()); poiMarkers = []; }
+export function hasPois() { return poiMarkers.length > 0; }
+
+// ---------- Steigungs-Einfärbung der Route ----------
+
+export function drawRouteGrade(geojson) {
+  whenReady(() => setData('route-grade', geojson && geojson.features && geojson.features.length ? geojson : EMPTY));
+}
+export function clearRouteGrade() { whenReady(() => setData('route-grade', EMPTY)); }
+
+export function setRouteGradeVisible(on) {
+  gradeVisible = !!on;
+  whenReady(() => {
+    if (map.getLayer('route-grade-line')) {
+      map.setLayoutProperty('route-grade-line', 'visibility', gradeVisible ? 'visible' : 'none');
+    }
+  });
+}
+export function isRouteGradeVisible() { return gradeVisible; }
+
+// ---------- Routen-Flyover (animierte Kamerafahrt in 3D) ----------
+
+let flyoverRAF = null;
+
+function haversineLL(a, b) {
+  const R = 6371000, toRad = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * toRad, dLon = (b[1] - a[1]) * toRad;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * toRad) * Math.cos(b[0] * toRad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+function bearingDeg(a, b) {
+  const toRad = Math.PI / 180, toDeg = 180 / Math.PI;
+  const y = Math.sin((b[1] - a[1]) * toRad) * Math.cos(b[0] * toRad);
+  const x = Math.cos(a[0] * toRad) * Math.sin(b[0] * toRad)
+    - Math.sin(a[0] * toRad) * Math.cos(b[0] * toRad) * Math.cos((b[1] - a[1]) * toRad);
+  return (Math.atan2(y, x) * toDeg + 360) % 360;
+}
+
+export function isFlyover() { return !!flyoverRAF; }
+export function stopFlyover() {
+  if (flyoverRAF) { cancelAnimationFrame(flyoverRAF); flyoverRAF = null; }
+}
+
+// Fährt die Kamera in 3D entlang der Route. coords: [[lat,lon,ele], …].
+// onStep(fraction, [lat,lon]) synchronisiert z. B. das Höhenprofil.
+export function flyover(coords, { onStep, onDone } = {}) {
+  stopFlyover();
+  const pts = (coords || []).filter((c) => c && c.length >= 2);
+  if (pts.length < 2) { if (onDone) onDone(); return () => {}; }
+
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + haversineLL(pts[i - 1], pts[i]));
+  const total = cum[cum.length - 1] || 1;
+  const durationMs = Math.min(Math.max((total / 1000) * 1600, 5000), 32000);
+
+  const targetPitch = 68, targetZoom = 15.2;
+  let curBearing = bearingDeg(pts[0], pts[1]);
+  const start = performance.now();
+  buildings3dOn = true;
+
+  function frame(now) {
+    const t = Math.min((now - start) / durationMs, 1);
+    const dist = t * total;
+    let i = 1;
+    while (i < cum.length && cum[i] < dist) i++;
+    const p0 = pts[i - 1], p1 = pts[Math.min(i, pts.length - 1)];
+    const segLen = (cum[Math.min(i, cum.length - 1)] - cum[i - 1]) || 1;
+    const f = Math.min(Math.max((dist - cum[i - 1]) / segLen, 0), 1);
+    const lat = p0[0] + (p1[0] - p0[0]) * f;
+    const lon = p0[1] + (p1[1] - p0[1]) * f;
+    // Blickrichtung sanft nachführen (kürzester Winkel).
+    const targetB = bearingDeg(p0, p1);
+    let d = ((targetB - curBearing + 540) % 360) - 180;
+    curBearing = (curBearing + d * 0.12 + 360) % 360;
+    map.jumpTo({ center: [lon, lat], bearing: curBearing, pitch: targetPitch, zoom: targetZoom });
+    if (onStep) onStep(t, [lat, lon]);
+    if (t < 1) flyoverRAF = requestAnimationFrame(frame);
+    else { flyoverRAF = null; applyBuildings(); if (onDone) onDone(); }
+  }
+  flyoverRAF = requestAnimationFrame(frame);
+  return stopFlyover;
 }

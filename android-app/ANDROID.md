@@ -1,7 +1,7 @@
 # WanderPlan – Android-App
 
 Diese native App ist ein schlanker **WebView-Container**, der die live gehostete
-Seite (https://lencraft151-cloud.github.io/Claude/) lädt. Dadurch bekommt die App
+Seite (https://lencraft151-cloud.github.io/WanderroutenPlanet/) lädt. Dadurch bekommt die App
 bei **jedem Web-Deploy automatisch die neuesten Features** – ohne dass du eine neue
 App-Version hochladen musst.
 

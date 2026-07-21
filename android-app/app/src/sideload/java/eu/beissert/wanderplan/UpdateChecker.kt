@@ -118,7 +118,7 @@ object UpdateChecker {
         }
         try {
             conn.inputStream.use { input ->
-                out.outputStream.use { output -> input.copyTo(output) }
+                out.outputStream().use { output -> input.copyTo(output) }
             }
         } finally {
             conn.disconnect()

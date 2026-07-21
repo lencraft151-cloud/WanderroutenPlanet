@@ -266,6 +266,41 @@ body.sheet-dragging .map-fabs { transition: none; }
 }
 .fab:active { transform: scale(0.92); }
 .fab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.fab.busy { opacity: 0.6; pointer-events: none; }
+
+/* Ziel-Navigation: Pfeil + Entfernung/ETA */
+.nav-panel {
+  position: absolute; top: 66px; left: 12px;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--glass);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border); border-radius: 16px;
+  padding: 7px 9px; box-shadow: var(--shadow-sm); z-index: 1001;
+  max-width: calc(100vw - 24px);
+}
+.nav-arrow-wrap {
+  width: 42px; height: 42px; border-radius: 50%; flex: none;
+  background: var(--accent); display: flex; align-items: center; justify-content: center;
+}
+.nav-arrow { font-size: 1.3rem; color: var(--accent-ink); line-height: 1; transition: transform 0.25s ease; }
+.nav-info { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.nav-dist { font-weight: 800; font-size: 1rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.nav-eta { font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-close { border: none; background: transparent; color: var(--text-dim); font-size: 0.9rem; cursor: pointer; padding: 4px 2px; flex: none; }
+
+/* Route-Extras: Schwierigkeit, Steigung, Flyover */
+.route-extras { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+.diff-badge { font-weight: 800; font-size: 0.78rem; padding: 4px 11px; border-radius: var(--pill); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-mini { padding: 6px 11px; font-size: 0.8rem; }
+.btn-mini.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+/* POI-Marker (Emoji) */
+.poi-icon {
+  font-size: 1.35rem; line-height: 1; cursor: pointer;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+  transition: transform 0.12s;
+}
+.poi-icon:active { transform: scale(1.25); }
 
 /* ===================== Karten-Marker ===================== */
 .maplibregl-marker { cursor: pointer; }
@@ -492,6 +527,7 @@ select#loopKm, .field-row select {
   .gps-chip { bottom: 28px; }
   .chip-stack { bottom: 28px; }
   .search-wrap { left: 420px; top: 16px; }
+  .nav-panel { left: 420px; top: 70px; }
   .viewer-card { left: 20px; right: auto; bottom: auto; top: calc(var(--topbar-h) + 20px); width: 360px; }
   .overlay { align-items: center; }
   .overlay-card { border-radius: var(--r-lg); max-height: 82vh; }

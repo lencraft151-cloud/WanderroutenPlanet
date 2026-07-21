@@ -24,7 +24,7 @@ android {
         versionCode = ciVersionCode
         versionName = ciVersionName
         // In der App verfügbar (Selbst-Updater vergleicht damit)
-        buildConfigField("String", "GITHUB_REPO", "\"lencraft151-cloud/Claude\"")
+        buildConfigField("String", "GITHUB_REPO", "\"lencraft151-cloud/WanderroutenPlanet\"")
     }
 
     signingConfigs {
