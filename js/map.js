@@ -1,26 +1,38 @@
 // 3D-Karte auf Basis von MapLibre GL JS.
 //
-// Basis: OpenFreeMap-Vektor-Style „liberty" (kostenlos, kein API-Key, inkl.
-// 3D-Gebäuden). Echtes 3D-Gelände über ein Höhenmodell (AWS-Terrarium-DEM,
-// ebenfalls keyless) + Hillshade + Himmel. Neig- und drehbar.
+// Basis: OpenFreeMap-Vektor-Style (kostenlos, kein API-Key, inkl. 3D-Gebäuden),
+// hell „liberty" / dunkel „dark". Echtes 3D-Gelände über ein Höhenmodell
+// (AWS-Terrarium-DEM, keyless) + Hillshade + Himmel. Neig- und drehbar.
 //
-// Die öffentliche API dieses Moduls entspricht der bisherigen (Leaflet-)
-// Version, damit app.js weitgehend unverändert bleibt. Koordinaten intern
-// nach außen weiterhin (lat, lng); MapLibre selbst nutzt [lng, lat].
+// Die öffentliche API entspricht der bisherigen Version; Koordinaten nach außen
+// (lat, lng), MapLibre selbst nutzt [lng, lat].
 
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+const STYLES = {
+  light: 'https://tiles.openfreemap.org/styles/liberty',
+  dark: 'https://tiles.openfreemap.org/styles/dark',
+};
 const DEM_TILES = 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png';
+
+let currentTheme = 'light';
+let buildings3dOn = true;
 
 export const map = new maplibregl.Map({
   container: 'map',
-  style: STYLE_URL,
+  style: STYLES.light,
   center: [11.4041, 47.2692],
   zoom: 12,
-  pitch: 60,
-  bearing: -15,
-  maxPitch: 82,
+  pitch: 55,
+  bearing: -12,
+  maxPitch: 80,
   attributionControl: { compact: true },
   cooperativeGestures: false,
+  // Performance / flüssigere 3D-Ansicht
+  fadeDuration: 0,
+  antialias: false,
+  refreshExpiredTiles: false,
+  renderWorldCopies: false,
+  maxTileCacheSize: 512,
+  collectResourceTiming: false,
 });
 
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
@@ -30,45 +42,68 @@ let ready = false;
 const pending = [];
 function whenReady(fn) { ready ? fn() : pending.push(fn); }
 
+// Zwischengespeicherte Overlay-Daten, damit sie einen Style-Wechsel (Dark Mode)
+// überleben und danach wieder angewendet werden.
+const overlayData = {};
+
 map.on('style.load', () => {
-  // 3D-Gelände
   if (!map.getSource('dem')) {
     map.addSource('dem', {
       type: 'raster-dem',
       tiles: [DEM_TILES],
       encoding: 'terrarium',
       tileSize: 256,
-      maxzoom: 14,
+      maxzoom: 13,
       attribution: 'Höhendaten: <a href="https://registry.opendata.aws/terrain-tiles/">Terrain Tiles</a>',
     });
   }
-  map.setTerrain({ source: 'dem', exaggeration: 1.4 });
+  map.setTerrain({ source: 'dem', exaggeration: 1.25 });
 
   const firstSymbol = (map.getStyle().layers.find((l) => l.type === 'symbol') || {}).id;
   if (!map.getLayer('hillshade')) {
     map.addLayer({
-      id: 'hillshade',
-      type: 'hillshade',
-      source: 'dem',
-      paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#4a3b2a' },
+      id: 'hillshade', type: 'hillshade', source: 'dem',
+      paint: { 'hillshade-exaggeration': 0.28 },
     }, firstSymbol);
   }
-
-  try {
-    map.setSky({
-      'sky-color': '#8fb8e6',
-      'sky-horizon-blend': 0.5,
-      'horizon-color': '#e6eef5',
-      'horizon-fog-blend': 0.5,
-      'fog-color': '#e7edf2',
-      'fog-ground-blend': 0.5,
-    });
-  } catch { /* Sky in älteren Versionen optional */ }
-
+  applySky();
+  applyBuildings();
   addOverlayLayers();
   ready = true;
   pending.splice(0).forEach((fn) => fn());
 });
+
+function applySky() {
+  try {
+    map.setSky(currentTheme === 'dark' ? {
+      'sky-color': '#0b1a2b', 'sky-horizon-blend': 0.5,
+      'horizon-color': '#20344a', 'horizon-fog-blend': 0.6,
+      'fog-color': '#141d29', 'fog-ground-blend': 0.6,
+    } : {
+      'sky-color': '#8fb8e6', 'sky-horizon-blend': 0.5,
+      'horizon-color': '#e6eef5', 'horizon-fog-blend': 0.5,
+      'fog-color': '#e7edf2', 'fog-ground-blend': 0.5,
+    });
+  } catch { /* Sky optional */ }
+}
+
+// 3D-Gebäude nur zeigen, wenn 3D aktiv UND aktiviert (Performance-Schalter).
+function applyBuildings() {
+  if (!map.getLayer('building-3d')) return;
+  const on = buildings3dOn && map.getPitch() >= 20;
+  map.setLayoutProperty('building-3d', 'visibility', on ? 'visible' : 'none');
+}
+
+export function setBuildings3d(on) { buildings3dOn = on; applyBuildings(); }
+
+// Hell/Dunkel umschalten (wechselt den Vektor-Style; Overlays/Marker bleiben).
+export function setMapTheme(theme) {
+  const t = theme === 'dark' ? 'dark' : 'light';
+  if (t === currentTheme) return;
+  currentTheme = t;
+  ready = false;
+  map.setStyle(STYLES[t]); // löst erneut 'style.load' aus → Handler baut alles wieder auf
+}
 
 // ---------- Geometrie-Helfer ----------
 
@@ -90,16 +125,24 @@ function lineFeature(coords) {
 }
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
+// Setzt Source-Daten UND merkt sie sich (für Style-Wechsel).
 function setData(id, data) {
+  overlayData[id] = data || EMPTY;
   const src = map.getSource(id);
-  if (src) src.setData(data || EMPTY);
+  if (src) src.setData(overlayData[id]);
 }
 
-// GeoJSON-Sourcen + Layer für Linien und Kreise (unter den DOM-Markern).
 function addOverlayLayers() {
-  const add = (id, data) => { if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: data || EMPTY }); };
-  add('route'); add('track'); add('pos-acc'); add('shared-acc'); add('target');
+  const add = (id) => { if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: overlayData[id] || EMPTY }); };
+  add('route'); add('track'); add('pos-acc'); add('shared-acc'); add('target'); add('connector');
 
+  if (!map.getLayer('connector-line')) {
+    map.addLayer({
+      id: 'connector-line', type: 'line', source: 'connector',
+      layout: { 'line-cap': 'round' },
+      paint: { 'line-color': '#1a73e8', 'line-width': 2.5, 'line-opacity': 0.8, 'line-dasharray': [1.5, 1.5] },
+    });
+  }
   if (!map.getLayer('route-line')) {
     map.addLayer({
       id: 'route-line', type: 'line', source: 'route',
@@ -128,7 +171,7 @@ function addOverlayLayers() {
 
 let changeHandler = null;
 let mapClickEnabled = true;
-let clickHandler = null; // wenn gesetzt (z. B. Ziel-Modus), erhält er den Klick
+let clickHandler = null;
 
 export function onWaypointsChanged(fn) { changeHandler = fn; }
 export function setMapClickEnabled(enabled) { mapClickEnabled = enabled; }
@@ -247,28 +290,33 @@ export function fitToCoords(coords) {
     minLat = Math.min(minLat, c[0]); maxLat = Math.max(maxLat, c[0]);
     minLng = Math.min(minLng, c[1]); maxLng = Math.max(maxLng, c[1]);
   }
-  map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 60, duration: 700 });
+  map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 70, duration: 700, essential: true });
 }
 
-// ---------- Facade (ersetzt direkte Leaflet-map-Aufrufe) ----------
+// ---------- Facade ----------
 
 export function setView(lat, lng, zoom) {
-  map.easeTo({ center: [lng, lat], zoom: zoom != null ? zoom : map.getZoom(), duration: 500 });
+  map.easeTo({ center: [lng, lat], zoom: zoom != null ? zoom : map.getZoom(), duration: 500, essential: true });
 }
 export function panTo(lat, lng, zoom) { setView(lat, lng, zoom); }
+export function flyTo(lat, lng, zoom) {
+  map.flyTo({ center: [lng, lat], zoom: zoom != null ? zoom : Math.max(map.getZoom(), 14), speed: 1.4, curve: 1.5, essential: true });
+}
 export function getZoom() { return map.getZoom(); }
+export function getCenter() { const c = map.getCenter(); return { lat: c.lat, lng: c.lng }; }
 export function resize() { map.resize(); }
 export function onDragStart(cb) { map.on('dragstart', cb); }
+export function onMoveEnd(cb) { map.on('moveend', cb); }
 
-// 2D/3D-Umschalter
 export function toggle3D() {
   const to3d = map.getPitch() < 20;
-  map.easeTo({ pitch: to3d ? 60 : 0, bearing: to3d ? map.getBearing() : 0, duration: 500 });
+  map.easeTo({ pitch: to3d ? 55 : 0, bearing: to3d ? map.getBearing() : 0, duration: 500, essential: true });
+  setTimeout(applyBuildings, 550);
   return to3d;
 }
 export function is3D() { return map.getPitch() >= 20; }
 
-// ---------- Eigene Position ----------
+// ---------- Eigene Position (blauer Punkt) ----------
 
 let posMarker = null;
 let posEl = null;
@@ -277,7 +325,7 @@ export function updatePosition(lat, lng, accuracy) {
   if (!posMarker) {
     posEl = document.createElement('div');
     posEl.className = 'pos-icon';
-    posEl.innerHTML = '<div class="pos-arrow"></div><div class="pos-dot"></div>';
+    posEl.innerHTML = '<div class="pos-cone"></div><div class="pos-core"></div><div class="pos-label"></div>';
     posMarker = new maplibregl.Marker({ element: posEl, anchor: 'center' }).setLngLat([lng, lat]).addTo(map);
   } else {
     posMarker.setLngLat([lng, lat]);
@@ -288,14 +336,33 @@ export function updatePosition(lat, lng, accuracy) {
 export function setPositionHeading(deg) {
   if (!posEl) return;
   posEl.classList.add('has-heading');
-  const arrow = posEl.querySelector('.pos-arrow');
-  if (arrow) arrow.style.transform = `rotate(${deg}deg)`;
+  const cone = posEl.querySelector('.pos-cone');
+  if (cone) cone.style.transform = `rotate(${deg}deg)`;
+}
+
+export function setPositionLabel(name) {
+  if (!posEl) return;
+  const label = posEl.querySelector('.pos-label');
+  if (label) { label.textContent = name || ''; label.style.display = name ? 'block' : 'none'; }
 }
 
 export function removePosition() {
   if (posMarker) { posMarker.remove(); posMarker = null; posEl = null; }
   whenReady(() => setData('pos-acc', EMPTY));
 }
+
+export function hasPosition() { return !!posMarker; }
+export function getPositionLngLat() { return posMarker ? posMarker.getLngLat() : null; }
+
+// ---------- Verbindungslinie (Luftlinie ich ↔ verfolgte Person) ----------
+
+export function setConnector(from, to) {
+  whenReady(() => setData('connector', {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[from.lng, from.lat], [to.lng, to.lat]] } }],
+  }));
+}
+export function clearConnector() { whenReady(() => setData('connector', EMPTY)); }
 
 // ---------- Geteilte Position (Solo-Betrachter) ----------
 
@@ -305,12 +372,12 @@ export function updateSharedPosition(lat, lng, accuracy, label) {
   if (!sharedMarker) {
     const el = document.createElement('div');
     el.className = 'shared-icon';
-    el.innerHTML = '<div class="shared-pulse"></div><div class="shared-dot">🥾</div>';
+    el.innerHTML = '<div class="shared-pulse"></div><div class="shared-dot">🥾</div><div class="shared-name"></div>';
     sharedMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).addTo(map);
   } else {
     sharedMarker.setLngLat([lng, lat]);
   }
-  if (label) sharedMarker.setPopup(new maplibregl.Popup({ closeButton: false, offset: 16 }).setText(label));
+  if (label) sharedMarker.getElement().querySelector('.shared-name').textContent = label;
   whenReady(() => setData('shared-acc', accuracy ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [geoCircle(lat, lng, accuracy)] } }] } : EMPTY));
 }
 
@@ -321,7 +388,7 @@ export function removeSharedPosition() {
 
 // ---------- Gruppe: mehrere Teilnehmer ----------
 
-const peerMarkers = new Map(); // pid -> { marker, el }
+const peerMarkers = new Map();
 
 export function updatePeer(pid, { lat, lng, color = '#8e24aa', name = '' }) {
   let entry = peerMarkers.get(pid);
@@ -350,7 +417,7 @@ export function clearPeers() {
   peerMarkers.clear();
 }
 
-// ---------- Ziel (Ankunfts-Benachrichtigung) ----------
+// ---------- Ziel ----------
 
 let targetMarker = null;
 

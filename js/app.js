@@ -9,6 +9,8 @@ import { ElevationChart } from './elevation.js';
 import { routeToGPX, trackToGPX, parseGPX, downloadGPX } from './gpx.js';
 import * as storage from './storage.js';
 import * as share from './share.js';
+import { searchPlaces } from './search.js';
+import { fetchWeather, weatherInfo } from './weather.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -247,6 +249,7 @@ async function recalcRoute() {
 mapView.onWaypointsChanged(() => {
   clearTimeout(recalcTimer);
   recalcTimer = setTimeout(recalcRoute, 250);
+  updateBackChip();
 });
 
 $('profileSelect').addEventListener('change', recalcRoute);
@@ -323,6 +326,21 @@ let follow = false;
 let hadFirstFix = false;
 let lastPosition = null;
 let lastPositionTime = 0;
+let autoCenterPending = false;
+
+// Startet die Ortung automatisch, damit der eigene blaue Punkt erscheint;
+// zentriert einmalig auf den ersten Fix, ohne dauerhaft zu folgen.
+function autoLocate() {
+  if (!sensors.gpsAvailable() || sensors.gpsRunning()) return;
+  autoCenterPending = true;
+  sensors.startGPS();
+  setLocateButton();
+}
+
+function getOwnName() {
+  const v = $('shareName') && $('shareName').value.trim();
+  return v || localStorage.getItem('wanderplan.name') || '';
+}
 
 function setLocateButton() {
   const on = sensors.gpsRunning();
@@ -372,10 +390,14 @@ sensors.onPosition((pos) => {
   lastPositionTime = Date.now();
   const { latitude, longitude, accuracy, speed, altitude } = pos.coords;
   mapView.updatePosition(latitude, longitude, accuracy);
+  mapView.setPositionLabel(getOwnName());
 
   if (follow) {
     const zoom = hadFirstFix ? mapView.getZoom() : 15;
     mapView.setView(latitude, longitude, zoom);
+  } else if (autoCenterPending) {
+    autoCenterPending = false;
+    mapView.setView(latitude, longitude, Math.max(mapView.getZoom(), 14));
   }
   hadFirstFix = true;
 
@@ -407,6 +429,9 @@ sensors.onPosition((pos) => {
 
   if (viewerMode) updateViewerDerived();
   updateTargetChip();
+  updateConnector();
+  updateBackChip();
+  updateWeather(latitude, longitude);
 });
 
 sensors.onGPSError((err) => {
@@ -777,6 +802,7 @@ function initViewer(token) {
     }
   });
 
+  autoLocate(); // eigener blauer Punkt
   viewerTimer = setInterval(updateViewerDerived, 1000);
 }
 
@@ -793,6 +819,7 @@ function onSharedMessage(data) {
   $('vwSpeed').textContent = fmtSpeed(data.speed);
   $('vwAltitude').textContent = fmtEle(data.alt);
   updateViewerDerived();
+  updateConnector();
   checkArrival('shared', data.name || 'Wanderer', data.lat, data.lon);
 }
 
@@ -905,6 +932,7 @@ function enterGroupUI(link, sending) {
   $('btnTarget').classList.remove('hidden');
   updateGroupSendBtn(sending);
   if (sending && !sensors.gpsRunning()) { sensors.startGPS(); setLocateButton(); }
+  else autoLocate(); // eigener blauer Punkt auch beim Zuschauen
   if (!groupPeerTimer) groupPeerTimer = setInterval(prunePeers, 5000);
 }
 
@@ -914,6 +942,7 @@ function onPeer(data) {
   lastPeerPos.set(data.pid, { lat: data.lat, lon: data.lon });
   mapView.updatePeer(data.pid, { lat: data.lat, lng: data.lon, color: data.color, name: data.name });
   renderPeerList();
+  updateConnector();
   checkArrival(data.pid, data.name || 'Wanderer', data.lat, data.lon);
 }
 
@@ -1071,6 +1100,206 @@ $('btnCenterShared').addEventListener('click', () => {
   }
 });
 
+// ---------- Theme (Hell/Dunkel) ----------
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  $('themeBtn').textContent = theme === 'dark' ? '☀️' : '🌙';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0e1411' : '#2d7d46');
+  mapView.setMapTheme(theme);
+}
+
+$('themeBtn').addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('wanderplan.theme', next);
+  applyTheme(next);
+  showToast(next === 'dark' ? '🌙 Dunkler Modus' : '☀️ Heller Modus');
+});
+
+// ---------- Verbindungslinie (Luftlinie ich ↔ verfolgte Person) ----------
+
+function updateConnector() {
+  const own = mapView.getPositionLngLat();
+  if (!own) { mapView.clearConnector(); return; }
+  let other = null;
+  if (viewerMode && sharedData) {
+    other = { lat: sharedData.lat, lng: sharedData.lon };
+  } else if (share.inGroup() && lastPeerPos.size) {
+    let best = null;
+    for (const m of lastPeerPos.values()) {
+      const d = haversine(own.lat, own.lng, m.lat, m.lon);
+      if (!best || d < best.d) best = { d, m };
+    }
+    if (best) other = { lat: best.m.lat, lng: best.m.lon };
+  }
+  if (other) mapView.setConnector({ lat: own.lat, lng: own.lng }, other);
+  else mapView.clearConnector();
+}
+
+// ---------- Ortssuche ----------
+
+let lastSearchPlace = null;
+
+async function doSearch() {
+  const q = $('searchInput').value.trim();
+  const ul = $('searchResults');
+  if (!q) { ul.classList.add('hidden'); return; }
+  ul.innerHTML = '<li class="empty">Suche …</li>';
+  ul.classList.remove('hidden');
+  try {
+    const places = await searchPlaces(q);
+    ul.innerHTML = '';
+    if (!places.length) { ul.innerHTML = '<li class="empty">Nichts gefunden.</li>'; return; }
+    for (const p of places) {
+      const li = document.createElement('li');
+      const n = document.createElement('div'); n.className = 'sr-name'; n.textContent = p.short;
+      const s = document.createElement('div'); s.className = 'sr-sub'; s.textContent = p.name;
+      li.append(n, s);
+      li.addEventListener('click', () => {
+        lastSearchPlace = p;
+        mapView.flyTo(p.lat, p.lon, 14);
+        ul.classList.add('hidden');
+        $('searchInput').value = p.short;
+        showToast(`📍 ${p.short} – „Route zum Ziel" plant automatisch dorthin.`, { duration: 4500 });
+      });
+      ul.appendChild(li);
+    }
+  } catch {
+    ul.innerHTML = '<li class="empty">Suche gerade nicht möglich.</li>';
+  }
+}
+
+$('searchBtn').addEventListener('click', doSearch);
+$('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-wrap')) $('searchResults').classList.add('hidden');
+});
+
+// ---------- Wetter & Sonnenuntergang ----------
+
+let lastWeatherFetch = { time: 0, lat: null, lon: null };
+let sunsetWarned = false;
+
+async function updateWeather(lat, lon, force = false) {
+  const now = Date.now();
+  const near = lastWeatherFetch.lat != null && haversine(lat, lon, lastWeatherFetch.lat, lastWeatherFetch.lon) < 4000;
+  if (!force && now - lastWeatherFetch.time < 300000 && near) return;
+  lastWeatherFetch = { time: now, lat, lon };
+  try {
+    const w = await fetchWeather(lat, lon);
+    renderWeather(w);
+  } catch { /* still */ }
+}
+
+function renderWeather(w) {
+  const chip = $('weatherChip');
+  const info = weatherInfo(w.code);
+  let txt = `${info.icon} ${w.temp != null ? Math.round(w.temp) + '°' : ''}`;
+  if (w.sunset) {
+    const mins = (new Date(w.sunset).getTime() - Date.now()) / 60000;
+    if (mins > 0) {
+      const total = Math.round(mins);
+      const h = Math.floor(total / 60);
+      const m = total % 60;
+      txt += `  🌇 ${h > 0 ? h + ' h ' : ''}${m} min`;
+      if (mins < 60 && !sunsetWarned) {
+        sunsetWarned = true;
+        notify('🌇 Bald Dämmerung', `Sonnenuntergang in ${Math.round(mins)} min – Zeit für den Rückweg.`);
+      }
+    } else {
+      txt += '  🌙 nach Sonnenuntergang';
+    }
+  }
+  chip.textContent = txt;
+  chip.classList.remove('hidden');
+}
+
+$('weatherChip').addEventListener('click', () => {
+  const c = mapView.getCenter();
+  updateWeather(c.lat, c.lng, true);
+  showToast('Wetter aktualisiert.');
+});
+
+// ---------- Zurück zum Start ----------
+
+function getRouteStart() {
+  const wps = mapView.getWaypoints();
+  if (wps.length) return wps[0];
+  const pts = tracking.getPoints();
+  if (pts.length) return { lat: pts[0].lat, lng: pts[0].lon };
+  return null;
+}
+
+function updateBackChip() {
+  const chip = $('backChip');
+  const start = getRouteStart();
+  if (!start || !lastPosition) { chip.classList.add('hidden'); return; }
+  const { latitude, longitude } = lastPosition.coords;
+  const d = haversine(latitude, longitude, start.lat, start.lng);
+  if (d < 25) { chip.classList.add('hidden'); return; }
+  const b = bearing(latitude, longitude, start.lat, start.lng);
+  chip.textContent = `↩ Start ${fmtDistance(d)} ${cardinal(b)}`;
+  chip.classList.remove('hidden');
+}
+
+$('backChip').addEventListener('click', () => {
+  const start = getRouteStart();
+  if (start) mapView.panTo(start.lat, start.lng, Math.max(mapView.getZoom(), 14));
+});
+
+// ---------- Automatischer Routenplaner ----------
+
+function autoRouteTo(lat, lng) {
+  const start = lastPosition
+    ? { lat: lastPosition.coords.latitude, lng: lastPosition.coords.longitude }
+    : mapView.getCenter();
+  mapView.setWaypoints([start, { lat, lng }]);
+  switchToTab('route');
+  ensureExpanded();
+  mapView.fitToCoords([[start.lat, start.lng], [lat, lng]]);
+  showToast('Route zu deinem Ziel wird geplant …');
+}
+
+$('btnAutoTarget').addEventListener('click', () => {
+  if (lastSearchPlace) { autoRouteTo(lastSearchPlace.lat, lastSearchPlace.lon); return; }
+  showToast('Tippe auf die Karte, um das Ziel zu wählen (oder oben einen Ort suchen).', { duration: 5000 });
+  mapView.setClickHandler((ll) => { mapView.setClickHandler(null); autoRouteTo(ll.lat, ll.lng); });
+});
+
+$('btnAutoLoop').addEventListener('click', () => {
+  const km = parseFloat($('loopKm').value) || 10;
+  const c = lastPosition
+    ? { lat: lastPosition.coords.latitude, lng: lastPosition.coords.longitude }
+    : mapView.getCenter();
+  mapView.setWaypoints(makeLoop(c.lat, c.lng, km));
+  switchToTab('route');
+  ensureExpanded();
+  showToast(`Rundtour-Vorschlag ~${km} km wird geplant …`, { duration: 5000 });
+});
+
+// Grober Rundweg: Wegpunkte im Ring um den Start, von BRouter über Wege verbunden.
+function makeLoop(lat, lng, km) {
+  const radius = (km * 1000) / (2 * Math.PI) * 0.75; // Wege sind länger als Luftlinie
+  const n = 5;
+  const start = Math.random() * 360;
+  const pts = [{ lat, lng }];
+  for (let i = 0; i < n; i++) {
+    const brng = (start + i * (360 / n)) * Math.PI / 180;
+    const dLat = (radius * Math.cos(brng)) / 6371000;
+    const dLng = (radius * Math.sin(brng)) / (6371000 * Math.cos(lat * Math.PI / 180));
+    pts.push({ lat: lat + dLat * 180 / Math.PI, lng: lng + dLng * 180 / Math.PI });
+  }
+  pts.push({ lat, lng });
+  return pts;
+}
+
+// Name für den eigenen Punkt merken, wenn im Teilen-Feld eingegeben.
+$('shareName').addEventListener('change', () => {
+  const v = $('shareName').value.trim();
+  if (v) localStorage.setItem('wanderplan.name', v);
+  mapView.setPositionLabel(getOwnName());
+});
+
 // ---------- Service Worker (PWA) ----------
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
@@ -1080,6 +1309,11 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 }
 
 // ---------- Start ----------
+
+// Theme: gespeicherte Wahl oder Systemeinstellung
+const storedTheme = localStorage.getItem('wanderplan.theme');
+const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+applyTheme(storedTheme || (prefersDark ? 'dark' : 'light'));
 
 renderSavedLists();
 updateTrackButtons();
@@ -1097,9 +1331,12 @@ if (shareToken) {
   renderPeerList();
   enterGroupUI(link, false);
   showToast('Du bist der Gruppe beigetreten. „Meinen Standort senden" macht dich sichtbar.', { duration: 6000 });
-} else if (!window.isSecureContext) {
-  showToast('Hinweis: GPS, Kompass und Teilen funktionieren nur über HTTPS oder localhost.', { duration: 6000 });
-} else if (!localStorage.getItem('wanderplan.seenHelp')) {
-  localStorage.setItem('wanderplan.seenHelp', '1');
-  openHelp();
+} else {
+  if (!window.isSecureContext) {
+    showToast('Hinweis: GPS, Kompass und Teilen funktionieren nur über HTTPS oder localhost.', { duration: 6000 });
+  } else if (!localStorage.getItem('wanderplan.seenHelp')) {
+    localStorage.setItem('wanderplan.seenHelp', '1');
+    openHelp();
+  }
+  autoLocate(); // eigener blauer Punkt beim Planen
 }
