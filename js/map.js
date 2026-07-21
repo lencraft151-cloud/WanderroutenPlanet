@@ -1,70 +1,180 @@
-// Leaflet-Karte: Layer, Wegpunkte, Routen-/Track-Linien, Positionsmarker
+// 3D-Karte auf Basis von MapLibre GL JS.
+//
+// Basis: OpenFreeMap-Vektor-Style „liberty" (kostenlos, kein API-Key, inkl.
+// 3D-Gebäuden). Echtes 3D-Gelände über ein Höhenmodell (AWS-Terrarium-DEM,
+// ebenfalls keyless) + Hillshade + Himmel. Neig- und drehbar.
+//
+// Die öffentliche API dieses Moduls entspricht der bisherigen (Leaflet-)
+// Version, damit app.js weitgehend unverändert bleibt. Koordinaten intern
+// nach außen weiterhin (lat, lng); MapLibre selbst nutzt [lng, lat].
 
-const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
+const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+const DEM_TILES = 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png';
+
+export const map = new maplibregl.Map({
+  container: 'map',
+  style: STYLE_URL,
+  center: [11.4041, 47.2692],
+  zoom: 12,
+  pitch: 60,
+  bearing: -15,
+  maxPitch: 82,
+  attributionControl: { compact: true },
+  cooperativeGestures: false,
 });
 
-const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-  maxZoom: 17,
-  attribution: 'Karte &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA) · Daten &copy; OpenStreetMap-Mitwirkende',
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+let ready = false;
+const pending = [];
+function whenReady(fn) { ready ? fn() : pending.push(fn); }
+
+map.on('style.load', () => {
+  // 3D-Gelände
+  if (!map.getSource('dem')) {
+    map.addSource('dem', {
+      type: 'raster-dem',
+      tiles: [DEM_TILES],
+      encoding: 'terrarium',
+      tileSize: 256,
+      maxzoom: 14,
+      attribution: 'Höhendaten: <a href="https://registry.opendata.aws/terrain-tiles/">Terrain Tiles</a>',
+    });
+  }
+  map.setTerrain({ source: 'dem', exaggeration: 1.4 });
+
+  const firstSymbol = (map.getStyle().layers.find((l) => l.type === 'symbol') || {}).id;
+  if (!map.getLayer('hillshade')) {
+    map.addLayer({
+      id: 'hillshade',
+      type: 'hillshade',
+      source: 'dem',
+      paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#4a3b2a' },
+    }, firstSymbol);
+  }
+
+  try {
+    map.setSky({
+      'sky-color': '#8fb8e6',
+      'sky-horizon-blend': 0.5,
+      'horizon-color': '#e6eef5',
+      'horizon-fog-blend': 0.5,
+      'fog-color': '#e7edf2',
+      'fog-ground-blend': 0.5,
+    });
+  } catch { /* Sky in älteren Versionen optional */ }
+
+  addOverlayLayers();
+  ready = true;
+  pending.splice(0).forEach((fn) => fn());
 });
 
-export const map = L.map('map', { layers: [topoLayer], zoomControl: true })
-  .setView([47.2692, 11.4041], 13);
+// ---------- Geometrie-Helfer ----------
 
-L.control.layers(
-  { 'OpenTopoMap (Wanderkarte)': topoLayer, 'OpenStreetMap': osmLayer },
-  null,
-  { position: 'topright' }
-).addTo(map);
+function geoCircle(lat, lng, radiusM, n = 48) {
+  const coords = [];
+  const R = 6371000;
+  const latR = lat * Math.PI / 180;
+  for (let i = 0; i <= n; i++) {
+    const brng = (i / n) * 2 * Math.PI;
+    const dLat = (radiusM * Math.cos(brng)) / R;
+    const dLng = (radiusM * Math.sin(brng)) / (R * Math.cos(latR));
+    coords.push([lng + dLng * 180 / Math.PI, lat + dLat * 180 / Math.PI]);
+  }
+  return coords;
+}
 
-L.control.scale({ imperial: false }).addTo(map);
+function lineFeature(coords) {
+  return { type: 'Feature', geometry: { type: 'LineString', coordinates: coords.map((c) => [c[1], c[0]]) } };
+}
+const EMPTY = { type: 'FeatureCollection', features: [] };
 
-// ---------- Wegpunkte ----------
+function setData(id, data) {
+  const src = map.getSource(id);
+  if (src) src.setData(data || EMPTY);
+}
 
-let waypointMarkers = [];
+// GeoJSON-Sourcen + Layer für Linien und Kreise (unter den DOM-Markern).
+function addOverlayLayers() {
+  const add = (id, data) => { if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: data || EMPTY }); };
+  add('route'); add('track'); add('pos-acc'); add('shared-acc'); add('target');
+
+  if (!map.getLayer('route-line')) {
+    map.addLayer({
+      id: 'route-line', type: 'line', source: 'route',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': ['case', ['get', 'fallback'], '#e07b00', '#d63a2f'], 'line-width': 5, 'line-opacity': 0.9 },
+    });
+  }
+  if (!map.getLayer('track-line')) {
+    map.addLayer({
+      id: 'track-line', type: 'line', source: 'track',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#1565c0', 'line-width': 5, 'line-opacity': 0.9 },
+    });
+  }
+  const circleFill = (id, src, color) => {
+    if (!map.getLayer(id + '-f')) map.addLayer({ id: id + '-f', type: 'fill', source: src, paint: { 'fill-color': color, 'fill-opacity': 0.12 } });
+    if (!map.getLayer(id + '-l')) map.addLayer({ id: id + '-l', type: 'line', source: src, paint: { 'line-color': color, 'line-width': 1, 'line-opacity': 0.5 } });
+  };
+  circleFill('posacc', 'pos-acc', '#1a73e8');
+  circleFill('sharedacc', 'shared-acc', '#8e24aa');
+  if (!map.getLayer('target-f')) map.addLayer({ id: 'target-f', type: 'fill', source: 'target', paint: { 'fill-color': '#f39c12', 'fill-opacity': 0.15 } });
+  if (!map.getLayer('target-l')) map.addLayer({ id: 'target-l', type: 'line', source: 'target', paint: { 'line-color': '#e67e22', 'line-width': 2, 'line-dasharray': [2, 2] } });
+}
+
+// ---------- Klick-Handler / Wegpunkte ----------
+
 let changeHandler = null;
 let mapClickEnabled = true;
+let clickHandler = null; // wenn gesetzt (z. B. Ziel-Modus), erhält er den Klick
 
-export function onWaypointsChanged(fn) {
-  changeHandler = fn;
-}
+export function onWaypointsChanged(fn) { changeHandler = fn; }
+export function setMapClickEnabled(enabled) { mapClickEnabled = enabled; }
+export function setClickHandler(fn) { clickHandler = fn; }
+function notifyChange() { if (changeHandler) changeHandler(); }
 
-export function setMapClickEnabled(enabled) {
-  mapClickEnabled = enabled;
-}
+map.on('click', (e) => {
+  const ll = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+  if (clickHandler) { clickHandler(ll); return; }
+  if (mapClickEnabled) addWaypoint(ll);
+});
 
-function notifyChange() {
-  if (changeHandler) changeHandler();
-}
+let waypointMarkers = [];
 
-function waypointIcon(index, total) {
-  let cls = 'wp-icon';
-  if (index === 0) cls += ' wp-start';
-  else if (index === total - 1) cls += ' wp-end';
-  return L.divIcon({
-    className: cls,
-    html: `<span>${index + 1}</span>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-  });
+function waypointElement(index, total) {
+  const el = document.createElement('div');
+  el.className = 'wp-icon' + (index === 0 ? ' wp-start' : index === total - 1 ? ' wp-end' : '');
+  el.innerHTML = `<span>${index + 1}</span>`;
+  return el;
 }
 
 function renumberWaypoints() {
-  waypointMarkers.forEach((m, i) => m.setIcon(waypointIcon(i, waypointMarkers.length)));
+  waypointMarkers.forEach((m, i) => {
+    const el = m.getElement();
+    el.className = 'wp-icon' + (i === 0 ? ' wp-start' : i === waypointMarkers.length - 1 ? ' wp-end' : '');
+    el.querySelector('span').textContent = i + 1;
+  });
 }
 
 function createWaypointMarker(latlng) {
-  const marker = L.marker(latlng, { draggable: true, icon: waypointIcon(0, 1) });
-  marker.on('dragend', notifyChange);
-  marker.on('click', () => {
+  const el = waypointElement(0, 1);
+  const marker = new maplibregl.Marker({ element: el, anchor: 'center', draggable: true })
+    .setLngLat([latlng.lng, latlng.lat])
+    .addTo(map);
+  let dragged = false;
+  marker.on('dragstart', () => { dragged = false; });
+  marker.on('drag', () => { dragged = true; });
+  marker.on('dragend', () => { setTimeout(() => { dragged = false; }, 0); notifyChange(); });
+  el.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (dragged) return;
     waypointMarkers = waypointMarkers.filter((m) => m !== marker);
     marker.remove();
     renumberWaypoints();
     notifyChange();
   });
-  marker.addTo(map);
   return marker;
 }
 
@@ -75,8 +185,8 @@ export function addWaypoint(latlng) {
 }
 
 export function undoWaypoint() {
-  const marker = waypointMarkers.pop();
-  if (marker) marker.remove();
+  const m = waypointMarkers.pop();
+  if (m) m.remove();
   renumberWaypoints();
   notifyChange();
 }
@@ -102,183 +212,179 @@ export function setWaypoints(latlngs) {
 
 export function getWaypoints() {
   return waypointMarkers.map((m) => {
-    const ll = m.getLatLng();
+    const ll = m.getLngLat();
     return { lat: ll.lat, lng: ll.lng };
   });
 }
 
-map.on('click', (e) => {
-  if (mapClickEnabled) addWaypoint(e.latlng);
-});
-
-// ---------- Routen-Linie ----------
-
-let routeLine = null;
+// ---------- Routen-/Track-Linien ----------
 
 export function drawRoute(coords, { fallback = false } = {}) {
-  clearRouteLine();
-  if (!coords || coords.length < 2) return;
-  routeLine = L.polyline(coords.map((c) => [c[0], c[1]]), {
-    color: fallback ? '#e07b00' : '#d63a2f',
-    weight: 4,
-    opacity: 0.85,
-    dashArray: fallback ? '6 8' : null,
-  }).addTo(map);
+  whenReady(() => {
+    if (!coords || coords.length < 2) { setData('route', EMPTY); return; }
+    const f = lineFeature(coords);
+    f.properties = { fallback };
+    setData('route', { type: 'FeatureCollection', features: [f] });
+  });
 }
+export function clearRouteLine() { whenReady(() => setData('route', EMPTY)); }
 
-export function clearRouteLine() {
-  if (routeLine) {
-    routeLine.remove();
-    routeLine = null;
-  }
+let trackCoords = [];
+export function setTrack(coords) {
+  trackCoords = coords ? coords.map((c) => [c[0], c[1]]) : [];
+  whenReady(() => setData('track', trackCoords.length >= 2 ? { type: 'FeatureCollection', features: [lineFeature(trackCoords)] } : EMPTY));
 }
+export function appendTrackPoint(lat, lng) {
+  trackCoords.push([lat, lng]);
+  whenReady(() => setData('track', trackCoords.length >= 2 ? { type: 'FeatureCollection', features: [lineFeature(trackCoords)] } : EMPTY));
+}
+export function clearTrackLine() { trackCoords = []; whenReady(() => setData('track', EMPTY)); }
 
 export function fitToCoords(coords) {
   if (!coords || coords.length < 2) return;
-  map.fitBounds(L.latLngBounds(coords.map((c) => [c[0], c[1]])), { padding: [40, 40] });
-}
-
-// ---------- Track-Linie (Aufzeichnung) ----------
-
-let trackLine = null;
-
-export function setTrack(coords) {
-  clearTrackLine();
-  if (!coords || coords.length < 2) return;
-  trackLine = L.polyline(coords.map((c) => [c[0], c[1]]), {
-    color: '#1565c0',
-    weight: 4,
-    opacity: 0.9,
-  }).addTo(map);
-}
-
-export function appendTrackPoint(lat, lng) {
-  if (!trackLine) {
-    trackLine = L.polyline([[lat, lng]], { color: '#1565c0', weight: 4, opacity: 0.9 }).addTo(map);
-  } else {
-    trackLine.addLatLng([lat, lng]);
+  let minLat = 90, minLng = 180, maxLat = -90, maxLng = -180;
+  for (const c of coords) {
+    minLat = Math.min(minLat, c[0]); maxLat = Math.max(maxLat, c[0]);
+    minLng = Math.min(minLng, c[1]); maxLng = Math.max(maxLng, c[1]);
   }
+  map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 60, duration: 700 });
 }
 
-export function clearTrackLine() {
-  if (trackLine) {
-    trackLine.remove();
-    trackLine = null;
-  }
+// ---------- Facade (ersetzt direkte Leaflet-map-Aufrufe) ----------
+
+export function setView(lat, lng, zoom) {
+  map.easeTo({ center: [lng, lat], zoom: zoom != null ? zoom : map.getZoom(), duration: 500 });
 }
+export function panTo(lat, lng, zoom) { setView(lat, lng, zoom); }
+export function getZoom() { return map.getZoom(); }
+export function resize() { map.resize(); }
+export function onDragStart(cb) { map.on('dragstart', cb); }
+
+// 2D/3D-Umschalter
+export function toggle3D() {
+  const to3d = map.getPitch() < 20;
+  map.easeTo({ pitch: to3d ? 60 : 0, bearing: to3d ? map.getBearing() : 0, duration: 500 });
+  return to3d;
+}
+export function is3D() { return map.getPitch() >= 20; }
 
 // ---------- Eigene Position ----------
 
 let posMarker = null;
-let accCircle = null;
+let posEl = null;
 
 export function updatePosition(lat, lng, accuracy) {
   if (!posMarker) {
-    posMarker = L.marker([lat, lng], {
-      interactive: false,
-      keyboard: false,
-      icon: L.divIcon({
-        className: 'pos-icon',
-        html: '<div class="pos-arrow"></div><div class="pos-dot"></div>',
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
-      }),
-      zIndexOffset: 900,
-    }).addTo(map);
-    accCircle = L.circle([lat, lng], {
-      radius: accuracy || 0,
-      weight: 1,
-      color: '#1a73e8',
-      fillColor: '#1a73e8',
-      fillOpacity: 0.12,
-      interactive: false,
-    }).addTo(map);
+    posEl = document.createElement('div');
+    posEl.className = 'pos-icon';
+    posEl.innerHTML = '<div class="pos-arrow"></div><div class="pos-dot"></div>';
+    posMarker = new maplibregl.Marker({ element: posEl, anchor: 'center' }).setLngLat([lng, lat]).addTo(map);
   } else {
-    posMarker.setLatLng([lat, lng]);
-    accCircle.setLatLng([lat, lng]);
-    accCircle.setRadius(accuracy || 0);
+    posMarker.setLngLat([lng, lat]);
   }
+  whenReady(() => setData('pos-acc', accuracy ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [geoCircle(lat, lng, accuracy)] } }] } : EMPTY));
 }
 
 export function setPositionHeading(deg) {
-  if (!posMarker) return;
-  const el = posMarker.getElement();
-  if (!el) return;
-  el.classList.add('has-heading');
-  const arrow = el.querySelector('.pos-arrow');
+  if (!posEl) return;
+  posEl.classList.add('has-heading');
+  const arrow = posEl.querySelector('.pos-arrow');
   if (arrow) arrow.style.transform = `rotate(${deg}deg)`;
 }
 
 export function removePosition() {
-  if (posMarker) { posMarker.remove(); posMarker = null; }
-  if (accCircle) { accCircle.remove(); accCircle = null; }
+  if (posMarker) { posMarker.remove(); posMarker = null; posEl = null; }
+  whenReady(() => setData('pos-acc', EMPTY));
 }
 
-// ---------- Hervorhebung (Höhenprofil-Hover) ----------
+// ---------- Geteilte Position (Solo-Betrachter) ----------
+
+let sharedMarker = null;
+
+export function updateSharedPosition(lat, lng, accuracy, label) {
+  if (!sharedMarker) {
+    const el = document.createElement('div');
+    el.className = 'shared-icon';
+    el.innerHTML = '<div class="shared-pulse"></div><div class="shared-dot">🥾</div>';
+    sharedMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).addTo(map);
+  } else {
+    sharedMarker.setLngLat([lng, lat]);
+  }
+  if (label) sharedMarker.setPopup(new maplibregl.Popup({ closeButton: false, offset: 16 }).setText(label));
+  whenReady(() => setData('shared-acc', accuracy ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [geoCircle(lat, lng, accuracy)] } }] } : EMPTY));
+}
+
+export function removeSharedPosition() {
+  if (sharedMarker) { sharedMarker.remove(); sharedMarker = null; }
+  whenReady(() => setData('shared-acc', EMPTY));
+}
+
+// ---------- Gruppe: mehrere Teilnehmer ----------
+
+const peerMarkers = new Map(); // pid -> { marker, el }
+
+export function updatePeer(pid, { lat, lng, color = '#8e24aa', name = '' }) {
+  let entry = peerMarkers.get(pid);
+  if (!entry) {
+    const el = document.createElement('div');
+    el.className = 'peer-icon';
+    el.innerHTML = '<div class="peer-pulse"></div><div class="peer-dot"><span></span></div><div class="peer-name"></div>';
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).addTo(map);
+    entry = { marker, el };
+    peerMarkers.set(pid, entry);
+  } else {
+    entry.marker.setLngLat([lng, lat]);
+  }
+  entry.el.style.setProperty('--peer', color);
+  entry.el.querySelector('.peer-dot span').textContent = (name || '?').slice(0, 2).toUpperCase();
+  entry.el.querySelector('.peer-name').textContent = name || '';
+}
+
+export function removePeer(pid) {
+  const e = peerMarkers.get(pid);
+  if (e) { e.marker.remove(); peerMarkers.delete(pid); }
+}
+
+export function clearPeers() {
+  peerMarkers.forEach((e) => e.marker.remove());
+  peerMarkers.clear();
+}
+
+// ---------- Ziel (Ankunfts-Benachrichtigung) ----------
+
+let targetMarker = null;
+
+export function setTarget(lat, lng, radius) {
+  if (!targetMarker) {
+    const el = document.createElement('div');
+    el.className = 'target-icon';
+    el.textContent = '🎯';
+    targetMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).addTo(map);
+  } else {
+    targetMarker.setLngLat([lng, lat]);
+  }
+  whenReady(() => setData('target', { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [geoCircle(lat, lng, radius)] } }] }));
+}
+
+export function clearTarget() {
+  if (targetMarker) { targetMarker.remove(); targetMarker = null; }
+  whenReady(() => setData('target', EMPTY));
+}
+
+// ---------- Höhenprofil-Hervorhebung ----------
 
 let highlightMarker = null;
 
 export function showHighlight(lat, lng) {
   if (!highlightMarker) {
-    highlightMarker = L.circleMarker([lat, lng], {
-      radius: 7,
-      color: '#fff',
-      weight: 2,
-      fillColor: '#d63a2f',
-      fillOpacity: 1,
-      interactive: false,
-    }).addTo(map);
+    const el = document.createElement('div');
+    el.className = 'hl-icon';
+    highlightMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).addTo(map);
   } else {
-    highlightMarker.setLatLng([lat, lng]);
+    highlightMarker.setLngLat([lng, lat]);
   }
 }
 
 export function hideHighlight() {
-  if (highlightMarker) {
-    highlightMarker.remove();
-    highlightMarker = null;
-  }
-}
-
-// ---------- Geteilte Position (von jemand anderem) ----------
-
-let sharedMarker = null;
-let sharedAccCircle = null;
-
-export function updateSharedPosition(lat, lng, accuracy, label) {
-  if (!sharedMarker) {
-    sharedMarker = L.marker([lat, lng], {
-      interactive: true,
-      keyboard: false,
-      icon: L.divIcon({
-        className: 'shared-icon',
-        html: '<div class="shared-pulse"></div><div class="shared-dot">🥾</div>',
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
-      }),
-      zIndexOffset: 1000,
-    }).addTo(map);
-    sharedAccCircle = L.circle([lat, lng], {
-      radius: accuracy || 0,
-      weight: 1,
-      color: '#8e24aa',
-      fillColor: '#8e24aa',
-      fillOpacity: 0.12,
-      interactive: false,
-    }).addTo(map);
-  } else {
-    sharedMarker.setLatLng([lat, lng]);
-    sharedAccCircle.setLatLng([lat, lng]);
-    sharedAccCircle.setRadius(accuracy || 0);
-  }
-  if (label) sharedMarker.bindTooltip(label, { direction: 'top', offset: [0, -14] });
-}
-
-export function removeSharedPosition() {
-  if (sharedMarker) { sharedMarker.remove(); sharedMarker = null; }
-  if (sharedAccCircle) { sharedAccCircle.remove(); sharedAccCircle = null; }
-}
-
-export function panTo(lat, lng, zoom) {
-  map.setView([lat, lng], zoom || map.getZoom());
+  if (highlightMarker) { highlightMarker.remove(); highlightMarker = null; }
 }

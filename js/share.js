@@ -116,7 +116,7 @@ function releaseWakeLock() {
 
 // Bildschirm-Sperre nach Zurückkehren erneut anfordern.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && shareState.active && !wakeLock) {
+  if (document.visibilityState === 'visible' && (shareState.active || groupState.active) && !wakeLock) {
     acquireWakeLock();
   }
 });
@@ -214,6 +214,149 @@ export function isSharing() {
 
 export function getShareToken() {
   return shareState.token;
+}
+
+// ---------- Gruppe: mehrere Wanderer gleichzeitig ----------
+
+const GROUP_PREFIX = 'wanderplan/group/';
+const COLORS = ['#8e24aa', '#1565c0', '#2e7d32', '#e65100', '#c2185b', '#00838f', '#5d4037', '#3949ab'];
+
+function colorFor(seed) {
+  let h = 0;
+  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return COLORS[h % COLORS.length];
+}
+
+const groupState = {
+  active: false,
+  token: null,
+  pid: null,
+  name: '',
+  color: '#8e24aa',
+  sharing: false,
+  client: null,
+  disconnect: null,
+  lastPosition: null,
+  lastPublish: 0,
+  reconnecting: false,
+  onStatus: null,
+  onPeer: null,
+  onPeerLeft: null,
+};
+
+export function buildGroupLink(token) {
+  return `${location.origin}${location.pathname}?group=${token}`;
+}
+
+export function getGroupInfo() {
+  return { token: groupState.token, pid: groupState.pid, color: groupState.color, sharing: groupState.sharing };
+}
+
+export function inGroup() { return groupState.active; }
+
+// Tritt einer Gruppe bei (bestehendes Token) oder erstellt eine neue.
+// share=true → eigene Position von Anfang an mitsenden.
+export function startGroup({ token, name = '', share = false, onStatus = () => {}, onPeer = () => {}, onPeerLeft = () => {} } = {}) {
+  stopGroup({ silent: true });
+  const t = token || generateToken();
+  groupState.active = true;
+  groupState.token = t;
+  groupState.pid = generateToken().slice(0, 8);
+  groupState.name = name;
+  groupState.color = colorFor(groupState.pid);
+  groupState.sharing = share;
+  groupState.lastPublish = 0;
+  groupState.onStatus = onStatus;
+  groupState.onPeer = onPeer;
+  groupState.onPeerLeft = onPeerLeft;
+
+  const wildcard = GROUP_PREFIX + t + '/+';
+
+  const open = (client) => {
+    groupState.client = client;
+    onStatus('live', 'Mit Gruppe verbunden.');
+    client.subscribe(wildcard, { qos: 0 }, (err) => {
+      if (err) onStatus('error', 'Konnte Gruppe nicht abonnieren.');
+    });
+    client.on('message', (topic, payload) => {
+      if (topic.indexOf(GROUP_PREFIX + t + '/') !== 0) return;
+      const pid = topic.slice((GROUP_PREFIX + t + '/').length);
+      const text = payload.toString();
+      if (!text) { groupState.onPeerLeft(pid); return; }
+      try {
+        const data = JSON.parse(text);
+        if (typeof data.lat === 'number' && typeof data.lon === 'number') {
+          groupState.onPeer({ ...data, pid, isSelf: pid === groupState.pid });
+        }
+      } catch { /* ignorieren */ }
+    });
+    client.on('close', handleDrop);
+    client.on('offline', handleDrop);
+    if (groupState.sharing) { acquireWakeLock(); if (groupState.lastPosition) publishGroupNow(); }
+  };
+
+  const handleDrop = () => {
+    if (!groupState.active || groupState.reconnecting) return;
+    groupState.reconnecting = true;
+    onStatus('reconnecting', 'Verbindung verloren – neuer Versuch …');
+    setTimeout(() => {
+      if (!groupState.active) return;
+      groupState.reconnecting = false;
+      groupState.disconnect = connectWithFallback(open, onStatus);
+    }, 3000);
+  };
+
+  groupState.disconnect = connectWithFallback(open, onStatus);
+  return buildGroupLink(t);
+}
+
+// Aktiviert das Mitsenden der eigenen Position (opt-in).
+export function enableGroupSharing() {
+  groupState.sharing = true;
+  acquireWakeLock();
+  if (groupState.lastPosition) publishGroupNow();
+}
+
+function publishGroupNow() {
+  const c = groupState.client;
+  const p = groupState.lastPosition;
+  if (!c || !c.connected || !p || !groupState.sharing) return;
+  const payload = JSON.stringify({ ...p, name: groupState.name || undefined, color: groupState.color });
+  c.publish(GROUP_PREFIX + groupState.token + '/' + groupState.pid, payload, { retain: true, qos: 0 });
+  groupState.lastPublish = Date.now();
+}
+
+export function publishGroupPosition(pos) {
+  if (!groupState.active) return;
+  groupState.lastPosition = pos;
+  if (groupState.sharing && Date.now() - groupState.lastPublish >= PUBLISH_INTERVAL) publishGroupNow();
+}
+
+// Schaltet das Mitsenden an/aus (opt-in in einer Gruppe).
+export function setGroupSharing(on) {
+  if (on) { enableGroupSharing(); return; }
+  groupState.sharing = false;
+  const c = groupState.client;
+  if (c && c.connected && groupState.token && groupState.pid) {
+    try { c.publish(GROUP_PREFIX + groupState.token + '/' + groupState.pid, '', { retain: true, qos: 0 }); } catch {}
+  }
+}
+
+export function stopGroup({ silent = false } = {}) {
+  if (groupState.disconnect) groupState.disconnect();
+  const c = groupState.client;
+  if (c && c.connected && groupState.token && groupState.pid) {
+    try { c.publish(GROUP_PREFIX + groupState.token + '/' + groupState.pid, '', { retain: true, qos: 0 }); } catch {}
+  }
+  if (c) { try { c.end(true); } catch {} }
+  if (!shareState.active) releaseWakeLock();
+  groupState.active = false;
+  groupState.sharing = false;
+  groupState.client = null;
+  groupState.disconnect = null;
+  groupState.lastPosition = null;
+  groupState.reconnecting = false;
+  if (!silent && groupState.onStatus) groupState.onStatus('stopped', 'Gruppe verlassen.');
 }
 
 // ---------- Empfänger (Viewer) ----------
