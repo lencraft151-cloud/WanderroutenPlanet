@@ -24,7 +24,10 @@
   --pill: 999px;
   --topbar-h: 56px;
   --sheet-h: 46vh;
+  color-scheme: light;
 }
+
+:root[data-theme="dark"] { color-scheme: dark; }
 
 :root[data-theme="dark"] {
   --accent: #3fae68;
@@ -179,6 +182,27 @@ main {
 .search-results .sr-name { font-weight: 600; }
 .search-results .sr-sub { font-size: 0.75rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-results .empty { color: var(--text-dim); cursor: default; }
+.search-clear {
+  border: none; background: transparent; color: var(--text-dim);
+  font-size: 1.1rem; cursor: pointer; width: 28px; height: 28px; flex: none; border-radius: 50%;
+}
+.search-clear:active { background: var(--surface-2); }
+
+/* Splash / Ladeanzeige */
+#splash {
+  position: fixed; inset: 0; z-index: 4000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  background: var(--bg); color: var(--text);
+  transition: opacity .5s ease; opacity: 1;
+}
+#splash.hide { opacity: 0; pointer-events: none; }
+#splash .splash-logo { font-size: 3.2rem; animation: splashPop .6s ease; }
+#splash .splash-name { font-weight: 800; font-size: 1.4rem; letter-spacing: -0.01em; }
+#splash .splash-sub { font-size: 0.85rem; color: var(--text-dim); }
+#splash .splash-bar { width: 140px; height: 4px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+#splash .splash-bar::after { content: ""; display: block; width: 40%; height: 100%; border-radius: 3px; background: var(--accent); animation: splashSlide 1.1s ease-in-out infinite; }
+@keyframes splashPop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes splashSlide { 0% { transform: translateX(-120%); } 100% { transform: translateX(360%); } }
 
 /* Schwebende Info-Chips (Wetter, Zurück-zum-Start, Ziel) */
 .chip-stack {
@@ -360,10 +384,17 @@ body:not(.viewer-mode) #viewerCard { display: none !important; }
 
 .field-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .field-row label { font-size: 0.85rem; font-weight: 700; flex: none; }
-.field-row select, .field-row input {
+.field-row select, .field-row input, #loopKm {
   flex: 1; min-width: 0; padding: 11px 12px; border: 1px solid var(--border);
   border-radius: 12px; font-size: 0.95rem; background: var(--surface); color: var(--text);
+  appearance: none; -webkit-appearance: none;
 }
+select#loopKm, .field-row select {
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%), linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(1.1em), calc(100% - 13px) calc(1.1em);
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 32px;
+}
+#loopKm { flex: 1; }
 
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .btn {

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>WanderPlan – Android-App (APK)</title>
+  <meta name="description" content="WanderPlan als Android-App direkt herunterladen – immer die neueste Version.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🥾</text></svg>">
+  <meta name="theme-color" content="#2d7d46">
+  <style>
+    :root {
+      color-scheme: dark;
+      --brand: #2d7d46;
+      --brand-2: #3fa563;
+      --bg: #0e1512;
+      --card: rgba(255, 255, 255, 0.06);
+      --text: #e8f0ea;
+      --muted: #9fb3a6;
+      --border: rgba(255, 255, 255, 0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(63, 165, 99, 0.18), transparent),
+        var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+      line-height: 1.55;
+    }
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 32px 26px;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+    .logo { font-size: 54px; line-height: 1; }
+    h1 { font-size: 1.7rem; margin: 10px 0 4px; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); font-size: 0.98rem; margin-bottom: 22px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 16px 20px;
+      font-size: 1.08rem;
+      font-weight: 700;
+      color: #fff;
+      text-decoration: none;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      box-shadow: 0 10px 24px rgba(45, 125, 70, 0.4);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .btn:active { transform: translateY(1px) scale(0.99); box-shadow: 0 6px 16px rgba(45, 125, 70, 0.35); }
+    .btn small { font-weight: 500; opacity: 0.85; font-size: 0.78rem; }
+    .qr {
+      margin: 22px auto 6px;
+      width: 172px;
+      height: 172px;
+      background: #fff;
+      border-radius: 14px;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr svg { width: 100%; height: 100%; display: block; }
+    .qr-hint { color: var(--muted); font-size: 0.82rem; margin-bottom: 20px; }
+    .steps {
+      text-align: left;
+      background: rgba(0, 0, 0, 0.22);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 16px 16px 18px;
+      margin-top: 6px;
+    }
+    .steps h2 { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+    .steps ol { margin: 0; padding-left: 20px; }
+    .steps li { margin-bottom: 7px; font-size: 0.92rem; }
+    .steps li:last-child { margin-bottom: 0; }
+    .foot { margin-top: 22px; font-size: 0.84rem; color: var(--muted); }
+    .foot a { color: var(--brand-2); text-decoration: none; }
+    .badge {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 5px 12px;
+      font-size: 0.78rem;
+      color: var(--brand-2);
+      background: rgba(63, 165, 99, 0.12);
+      border: 1px solid rgba(63, 165, 99, 0.3);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="logo">🥾</div>
+    <h1>WanderPlan für Android</h1>
+    <p class="sub">Direkt-Download (APK) – aktualisiert sich selbst</p>
+
+    <a id="dl" class="btn"
+       href="https://github.com/lencraft151-cloud/Claude/releases/latest/download/WanderPlan-sideload.apk">
+      ⬇️ APK herunterladen
+      <small>(neueste Version)</small>
+    </a>
+
+    <div id="qr" class="qr" aria-label="QR-Code zum Download"></div>
+    <p class="qr-hint">Mit dem Handy scannen zum Download</p>
+
+    <span class="badge">🔄 App hält sich selbst aktuell</span>
+
+    <div class="steps">
+      <h2>Installation</h2>
+      <ol>
+        <li>APK herunterladen (Button oder QR-Code).</li>
+        <li>Heruntergeladene Datei öffnen.</li>
+        <li>Falls gefragt: „Aus dieser Quelle installieren“ erlauben.</li>
+        <li>Installieren &amp; öffnen – fertig. 🎉</li>
+      </ol>
+    </div>
+
+    <p class="foot">
+      Lieber ohne Installation? →
+      <a href="../">WanderPlan im Browser öffnen</a><br>
+      Die App lädt stets die Live-Version und teilt den Standort auch im Hintergrund.
+    </p>
+  </main>
+
+  <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
+  <script>
+    (function () {
+      var url = document.getElementById('dl').href;
+      try {
+        var qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        document.getElementById('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+      } catch (e) {
+        document.getElementById('qr').style.display = 'none';
+      }
+    })();
+  </script>
+</body>
+</html>

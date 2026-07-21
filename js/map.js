@@ -42,6 +42,10 @@ let ready = false;
 const pending = [];
 function whenReady(fn) { ready ? fn() : pending.push(fn); }
 
+// Feuert (einmalig) sobald der Style geladen ist – für Splash/Ladeanzeige.
+const readyOnce = [];
+export function onReady(fn) { if (ready) fn(); else readyOnce.push(fn); }
+
 // Zwischengespeicherte Overlay-Daten, damit sie einen Style-Wechsel (Dark Mode)
 // überleben und danach wieder angewendet werden.
 const overlayData = {};
@@ -71,6 +75,7 @@ map.on('style.load', () => {
   addOverlayLayers();
   ready = true;
   pending.splice(0).forEach((fn) => fn());
+  readyOnce.splice(0).forEach((fn) => fn());
 });
 
 function applySky() {
