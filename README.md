@@ -22,6 +22,20 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   startet die Navigation dorthin.
 - **🧭 Ziel-Navigation**: Kompass-Pfeil, der immer zum Ziel zeigt, plus
   Luftlinien-Entfernung und geschätzte Ankunftszeit (ETA).
+- **📍 Auf dem eigenen Punkt bleiben**: automatisches Folgen; ein
+  **„Zurück zu mir"**-Knopf erscheint, sobald du die Karte wegschiebst. Der
+  Ortungs-Knopf schaltet das GPS nie versehentlich aus (langer Druck beendet es).
+- **🧭 Navigations-Modus (Heading-Up)**: die Karte dreht sich in deine
+  Blickrichtung, dein blauer Punkt bleibt mittig – wie im Auto-Navi.
+- **🔎 Ortssuche mit Nähe-Bezug**: Live-Vorschläge beim Tippen, sortiert nach
+  Entfernung (mit Kategorie-Icon und Luftlinie) und mit **Suchverlauf**.
+- **🧾 Wegpunkt-Liste**: alle Stopps umsortieren, löschen, benennen und
+  **„Mein Standort als Start"** – die Route wird sofort neu berechnet.
+- **🔗 Route als Link teilen**: die geplante Route in einem kurzen Link kodieren;
+  wer ihn öffnet, sieht und lädt genau diese Route. Beim Live-Teilen kannst du
+  deine Route **optional mitsenden**, sodass Betrachter sie auf der Karte sehen.
+- **📌 Karten-Langdruck**: langer Druck auf die Karte zeigt Ort, Geländehöhe und
+  Koordinaten – mit „Route hierher" und „Als Ziel".
 - **⚠️ Schwierigkeit & Steigung**: grobe SAC-Einstufung (T1–T5) samt maximaler
   Steigung und optionaler farbiger Steigungsanzeige auf der Route (grün = flach,
   rot = steil).

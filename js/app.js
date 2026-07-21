@@ -9,10 +9,11 @@ import { ElevationChart } from './elevation.js';
 import { routeToGPX, trackToGPX, parseGPX, downloadGPX } from './gpx.js';
 import * as storage from './storage.js';
 import * as share from './share.js';
-import { searchPlaces } from './search.js';
+import { searchPlaces, reverseGeocode, kindEmoji } from './search.js';
 import { fetchWeather, weatherInfo } from './weather.js';
 import { fetchPois } from './poi.js';
 import { computeDifficulty, buildGradeSegments } from './difficulty.js';
+import { buildRouteLink, decodeRoute } from './routecodec.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -221,6 +222,7 @@ function showRoute(route) {
   const hasProfile = chart.setData(route.coords);
   $('chartEmpty').classList.toggle('hidden', hasProfile);
   updateRouteExtras(route);
+  maybeShareRoute();
 }
 
 function clearRouteDisplay() {
@@ -234,6 +236,18 @@ function clearRouteDisplay() {
   stopFlyover();
   mapView.clearRouteGrade();
   $('routeExtras').classList.add('hidden');
+  if (share.isSharing() && $('shareRouteToggle') && $('shareRouteToggle').checked) share.publishRoute(null);
+}
+
+// Route an Live-Betrachter senden, wenn Teilen aktiv und der Schalter an ist.
+// Auf ~180 Punkte ausdünnen, damit die Nachricht kompakt bleibt.
+function maybeShareRoute() {
+  const toggle = $('shareRouteToggle');
+  if (!toggle || !toggle.checked || !share.isSharing() || !currentRoute) return;
+  const coords = currentRoute.coords;
+  const step = Math.max(1, Math.ceil(coords.length / 180));
+  const simplified = coords.filter((_, i) => i % step === 0 || i === coords.length - 1).map((c) => [c[0], c[1]]);
+  share.publishRoute(simplified);
 }
 
 // Schwierigkeits-Badge + Steigungs-Segmente aktualisieren.
@@ -267,18 +281,115 @@ async function recalcRoute() {
   );
 }
 
+let wpNames = []; // optionale Namen, an die Wegpunkt-Reihenfolge gebunden
+
 mapView.onWaypointsChanged(() => {
   clearTimeout(recalcTimer);
   recalcTimer = setTimeout(recalcRoute, 250);
   updateBackChip();
+  renderWaypointList();
 });
 
 $('profileSelect').addEventListener('change', recalcRoute);
 $('btnUndo').addEventListener('click', () => mapView.undoWaypoint());
-$('btnReverse').addEventListener('click', () => mapView.reverseWaypoints());
+$('btnReverse').addEventListener('click', () => { wpNames.reverse(); mapView.reverseWaypoints(); });
 $('btnClear').addEventListener('click', () => {
+  wpNames = [];
   mapView.clearWaypoints();
   clearRouteDisplay();
+});
+
+// ---------- Wegpunkt-Liste (umsortieren, löschen, benennen) ----------
+
+function defaultWpLabel(i, total) {
+  if (i === 0) return 'Start';
+  if (i === total - 1) return 'Ziel';
+  return `Stopp ${i}`;
+}
+
+function renderWaypointList() {
+  const ul = $('waypointList');
+  const wps = mapView.getWaypoints();
+  // Namen-Array an aktuelle Länge angleichen.
+  if (wpNames.length > wps.length) wpNames.length = wps.length;
+  while (wpNames.length < wps.length) wpNames.push('');
+  ul.innerHTML = '';
+  if (wps.length === 0) { ul.classList.add('hidden'); return; }
+  ul.classList.remove('hidden');
+  wps.forEach((w, i) => {
+    const li = document.createElement('li');
+    const badge = document.createElement('span');
+    badge.className = 'wp-badge' + (i === 0 ? ' start' : i === wps.length - 1 ? ' end' : '');
+    badge.textContent = i === 0 ? 'S' : i === wps.length - 1 ? 'Z' : String(i);
+    const name = document.createElement('input');
+    name.className = 'wp-name';
+    name.value = wpNames[i] || defaultWpLabel(i, wps.length);
+    name.title = `${w.lat.toFixed(4)}, ${w.lng.toFixed(4)}`;
+    name.addEventListener('change', () => { wpNames[i] = name.value.trim(); });
+    const btns = document.createElement('span');
+    btns.className = 'wp-btns';
+    const up = document.createElement('button'); up.textContent = '▲'; up.title = 'nach oben'; up.disabled = i === 0;
+    up.addEventListener('click', () => moveWaypoint(i, -1));
+    const down = document.createElement('button'); down.textContent = '▼'; down.title = 'nach unten'; down.disabled = i === wps.length - 1;
+    down.addEventListener('click', () => moveWaypoint(i, 1));
+    const del = document.createElement('button'); del.textContent = '✕'; del.title = 'entfernen';
+    del.addEventListener('click', () => removeWaypoint(i));
+    btns.append(up, down, del);
+    li.append(badge, name, btns);
+    ul.appendChild(li);
+  });
+}
+
+function moveWaypoint(i, dir) {
+  const wps = mapView.getWaypoints();
+  const j = i + dir;
+  if (j < 0 || j >= wps.length) return;
+  [wps[i], wps[j]] = [wps[j], wps[i]];
+  [wpNames[i], wpNames[j]] = [wpNames[j] || '', wpNames[i] || ''];
+  mapView.setWaypoints(wps);
+}
+
+function removeWaypoint(i) {
+  const wps = mapView.getWaypoints();
+  wps.splice(i, 1);
+  wpNames.splice(i, 1);
+  if (wps.length) mapView.setWaypoints(wps);
+  else { mapView.clearWaypoints(); clearRouteDisplay(); }
+}
+
+// „Mein Standort als Start" – stellt die eigene Position als Wegpunkt 1 voran.
+$('btnStartHere').addEventListener('click', () => {
+  whenLocated(() => {
+    const me = { lat: lastPosition.coords.latitude, lng: lastPosition.coords.longitude };
+    const wps = mapView.getWaypoints();
+    mapView.setWaypoints([me, ...wps]);
+    wpNames = ['Mein Standort', ...wpNames];
+    switchToTab('route');
+    showToast('📍 Dein Standort ist jetzt der Startpunkt.');
+  });
+});
+
+// ---------- Route als Link teilen ----------
+
+async function shareOrCopyText(title, url) {
+  if (navigator.share) { try { await navigator.share({ title, url }); return; } catch { /* abgebrochen */ } }
+  try { await navigator.clipboard.writeText(url); showToast('🔗 Route-Link kopiert.'); }
+  catch { window.prompt('Route-Link kopieren:', url); }
+}
+
+$('btnRouteLink').addEventListener('click', () => {
+  const wps = mapView.getWaypoints();
+  if (wps.length < 2) { showToast('Erst eine Route mit mindestens 2 Wegpunkten planen.'); return; }
+  shareOrCopyText('WanderPlan – geplante Route', buildRouteLink($('profileSelect').value, wps));
+});
+
+$('shareRouteToggle').addEventListener('change', () => {
+  if (!share.isSharing()) {
+    if ($('shareRouteToggle').checked) showToast('Wird gesendet, sobald du „Live-Standort teilen" startest.');
+    return;
+  }
+  if ($('shareRouteToggle').checked) { maybeShareRoute(); showToast('🗺 Deine Route wird jetzt mitgesendet.'); }
+  else { share.publishRoute(null); showToast('Route wird nicht mehr mitgesendet.'); }
 });
 
 // ---------- Route speichern / GPX ----------
@@ -344,10 +455,12 @@ $('fileInput').addEventListener('change', async (e) => {
 // ---------- GPS / Standort ----------
 
 let follow = false;
+let navMode = false; // Heading-Up (Karte dreht in Blickrichtung)
 let hadFirstFix = false;
 let lastPosition = null;
 let lastPositionTime = 0;
 let autoCenterPending = false;
+const RECENTER_DIST = 60; // ab so vielen Metern Abstand „Zurück zu mir" zeigen
 
 // Startet die Ortung automatisch, damit der eigene blaue Punkt erscheint;
 // zentriert einmalig auf den ersten Fix, ohne dauerhaft zu folgen.
@@ -356,6 +469,16 @@ function autoLocate() {
   autoCenterPending = true;
   sensors.startGPS();
   setLocateButton();
+}
+
+// Führt fn sofort aus, wenn die Position bekannt ist – sonst nach dem ersten Fix.
+let onNextFix = [];
+function whenLocated(fn) {
+  if (lastPosition) { fn(); return; }
+  onNextFix.push(fn);
+  if (!sensors.gpsAvailable()) { showToast('Standort nicht verfügbar.', { error: true }); onNextFix = []; return; }
+  autoLocate();
+  showToast('Standort wird gesucht …');
 }
 
 function getOwnName() {
@@ -369,58 +492,107 @@ function setLocateButton() {
   $('actLocate').classList.toggle('active', on);
 }
 
+// Zentriert auf die eigene Position und aktiviert das Folgen. Schaltet das GPS
+// NIE versehentlich aus – so bleibt man zuverlässig „auf seinem Punkt".
+function recenterOnMe() {
+  follow = true;
+  if (lastPosition) {
+    mapView.followTo(
+      lastPosition.coords.latitude, lastPosition.coords.longitude,
+      { zoom: Math.max(mapView.getZoom(), 15), bearing: navMode ? lastHeading : 0 }
+    );
+  }
+  updateRecenterChip();
+  setLocateButton();
+}
+
 function toggleLocate() {
   if (!sensors.gpsAvailable()) {
     showToast('Dein Browser unterstützt keine Standortabfrage.', { error: true });
     return;
   }
   if (!sensors.gpsRunning()) {
+    // 1) GPS aus → starten und folgen
     follow = true;
     hadFirstFix = false;
     sensors.startGPS();
     setLocateButton();
     showToast('Standort wird gesucht …');
   } else if (!follow) {
-    follow = true;
-    if (lastPosition) {
-      mapView.setView(
-        lastPosition.coords.latitude, lastPosition.coords.longitude,
-        Math.max(mapView.getZoom(), 15)
-      );
-    }
-  } else if (share.isSharing() || tracking.getState() === 'recording') {
-    // GPS wird noch gebraucht → nur Folgen aus
-    follow = false;
-    showToast('Karte folgt nicht mehr. GPS bleibt für Teilen/Tracking aktiv.');
+    // 2) GPS an, aber weggeschoben → zurück und folgen
+    recenterOnMe();
   } else {
-    sensors.stopGPS();
+    // 3) folgt bereits → Folgen pausieren (Punkt & GPS bleiben)
     follow = false;
-    mapView.removePosition();
-    $('gpsChip').classList.add('hidden');
-    setLocateButton();
+    updateRecenterChip();
+    showToast('Folgen pausiert. Tipp erneut oder „Zurück zu mir", um weiterzugehen.');
   }
+}
+
+// Langer Druck auf den Ortungs-Knopf → GPS wirklich ausschalten (Akku sparen).
+function stopLocate() {
+  if (share.isSharing() || tracking.getState() === 'recording') {
+    showToast('GPS bleibt für Teilen/Tracking aktiv.');
+    return;
+  }
+  sensors.stopGPS();
+  follow = false;
+  mapView.removePosition();
+  $('gpsChip').classList.add('hidden');
+  updateRecenterChip();
+  setLocateButton();
+  showToast('Ortung ausgeschaltet.');
 }
 
 $('btnLocate').addEventListener('click', toggleLocate);
 $('vwLocate').addEventListener('click', toggleLocate);
+attachLongPress($('btnLocate'), stopLocate);
+
+$('recenterChip').addEventListener('click', recenterOnMe);
+
+// „Zurück zu mir" zeigen, wenn GPS aktiv ist und die Karte von der eigenen
+// Position weggeschoben wurde.
+function updateRecenterChip() {
+  const chip = $('recenterChip');
+  if (!chip) return;
+  const show = sensors.gpsRunning() && lastPosition && !follow
+    && mapView.distanceToCenter(lastPosition.coords.latitude, lastPosition.coords.longitude) > RECENTER_DIST;
+  chip.classList.toggle('hidden', !show);
+}
+
+// Kleiner Long-Press-Helfer (Maus & Touch).
+function attachLongPress(el, fn, ms = 550) {
+  let timer = null;
+  const start = () => { timer = setTimeout(() => { timer = null; fn(); }, ms); };
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  el.addEventListener('touchstart', start, { passive: true });
+  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchmove', cancel);
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseleave', cancel);
+}
 
 mapView.onDragStart(() => { follow = false; followShared = false; });
+mapView.onMoveEnd(updateRecenterChip);
 
 sensors.onPosition((pos) => {
   lastPosition = pos;
   lastPositionTime = Date.now();
+  if (onNextFix.length) { const cbs = onNextFix; onNextFix = []; cbs.forEach((fn) => { try { fn(); } catch {} }); }
   const { latitude, longitude, accuracy, speed, altitude } = pos.coords;
   mapView.updatePosition(latitude, longitude, accuracy);
   mapView.setPositionLabel(getOwnName());
 
   if (follow) {
     const zoom = hadFirstFix ? mapView.getZoom() : 15;
-    mapView.setView(latitude, longitude, zoom);
+    mapView.followTo(latitude, longitude, { zoom, bearing: navMode ? lastHeading : undefined });
   } else if (autoCenterPending) {
     autoCenterPending = false;
     mapView.setView(latitude, longitude, Math.max(mapView.getZoom(), 14));
   }
   hadFirstFix = true;
+  updateRecenterChip();
 
   const chip = $('gpsChip');
   chip.textContent = `± ${Math.round(accuracy)} m${speed != null && !Number.isNaN(speed) ? ` · ${fmtSpeed(speed)}` : ''}`;
@@ -460,6 +632,7 @@ sensors.onGPSError((err) => {
   if (err.code === 1) {
     sensors.stopGPS();
     setLocateButton();
+    onNextFix = []; // wartende Aktionen (Auto-Route etc.) verwerfen
     let msg = 'Standort-Zugriff verweigert. Bitte in den Browser-Einstellungen erlauben.';
     if (!window.isSecureContext) msg += ' Hinweis: GPS funktioniert nur über HTTPS oder localhost.';
     showToast(msg, { error: true });
@@ -521,8 +694,30 @@ function handleHeading(heading) {
   $('compassRose').style.transform = `rotate(${roseRotation}deg)`;
   $('compassText').textContent = `${String(Math.round(heading)).padStart(3, '0')}° ${cardinal(heading)}`;
   mapView.setPositionHeading(heading);
+  // Navigations-Modus: Karte in Blickrichtung drehen (Heading-Up).
+  if (navMode) mapView.setBearing(heading);
   updateNav();
 }
+
+// ---------- Navigations-Modus (Heading-Up) ----------
+
+$('btnNav').addEventListener('click', async () => {
+  navMode = !navMode;
+  $('btnNav').classList.toggle('active', navMode);
+  if (navMode) {
+    // Kompass für die Blickrichtung aktivieren (falls noch nicht an).
+    if (!sensors.compassEnabled()) {
+      try { await sensors.enableCompass(handleHeading); } catch (err) { showToast(err.message, { error: true }); }
+    }
+    if (!mapView.is3D()) mapView.toggle3D();
+    if (!sensors.gpsRunning()) { follow = true; hadFirstFix = false; sensors.startGPS(); setLocateButton(); }
+    else recenterOnMe();
+    showToast('🧭 Navigations-Modus: Karte dreht sich in Blickrichtung.', { duration: 4000 });
+  } else {
+    mapView.setBearing(0);
+    showToast('Navigations-Modus aus (Karte wieder genordet).');
+  }
+});
 
 $('compassBtn').addEventListener('click', async () => {
   if (sensors.compassEnabled()) return;
@@ -687,6 +882,7 @@ $('btnShareStart').addEventListener('click', () => {
   }
   setShareStatus('waiting');
   nativeStartShare('solo', share.getShareToken());
+  maybeShareRoute(); // vorhandene Route sofort mitsenden, wenn Schalter an
   showToast('Teilen gestartet. Schick den Link an deine Begleiter.', { duration: 5000 });
 });
 
@@ -836,7 +1032,7 @@ function initViewer(token) {
   $('btnCenterShared').classList.remove('hidden');
   $('btnTarget').classList.remove('hidden');
 
-  share.startViewing(token, { onMessage: onSharedMessage, onStatus: onViewerStatus });
+  share.startViewing(token, { onMessage: onSharedMessage, onStatus: onViewerStatus, onRoute: onSharedRoute });
 
   $('btnCenterShared').addEventListener('click', () => {
     if (sharedData) {
@@ -864,6 +1060,17 @@ function onSharedMessage(data) {
   updateViewerDerived();
   updateConnector();
   checkArrival('shared', data.name || 'Wanderer', data.lat, data.lon);
+}
+
+// Der Sender teilt (optional) seine geplante Route mit.
+function onSharedRoute(coords) {
+  if (coords && coords.length >= 2) {
+    mapView.drawRoute(coords, {});
+    if (!sharedData) mapView.fitToCoords(coords);
+    showToast('🗺 Der Sender teilt seine geplante Route.', { duration: 4000 });
+  } else {
+    mapView.clearRouteLine();
+  }
 }
 
 function onViewerStatus(state, text) {
@@ -1189,41 +1396,96 @@ function updateConnector() {
 // ---------- Ortssuche ----------
 
 let lastSearchPlace = null;
+let searchDebounce = null;
+let searchSeq = 0;
+
+// Bezugspunkt für Nähe/Entfernung: eigener Standort, sonst Karten-Mitte.
+function searchRef() {
+  if (lastPosition) return { lat: lastPosition.coords.latitude, lon: lastPosition.coords.longitude };
+  const c = mapView.getCenter();
+  return { lat: c.lat, lon: c.lng };
+}
+
+// ---------- Letzte Suchen ----------
+function getRecents() {
+  try { return JSON.parse(localStorage.getItem('wanderplan.recent') || '[]'); } catch { return []; }
+}
+function addRecent(p) {
+  const list = getRecents().filter((r) => !(Math.abs(r.lat - p.lat) < 1e-5 && Math.abs(r.lon - p.lon) < 1e-5));
+  list.unshift({ short: p.short, name: p.name, lat: p.lat, lon: p.lon, kind: p.kind });
+  localStorage.setItem('wanderplan.recent', JSON.stringify(list.slice(0, 6)));
+}
+
+function selectPlace(p) {
+  lastSearchPlace = p;
+  addRecent(p);
+  mapView.flyTo(p.lat, p.lon, 14);
+  $('searchResults').classList.add('hidden');
+  $('searchInput').value = p.short;
+  $('searchClear').classList.remove('hidden');
+  startNav(p.lat, p.lon, p.short);
+  showToast(`${kindEmoji(p.kind)} ${p.short} – Navigation aktiv. „Route zum Ziel" plant dorthin.`, { duration: 4500 });
+}
+
+function renderResults(places, { recent = false } = {}) {
+  const ul = $('searchResults');
+  const ref = searchRef();
+  ul.innerHTML = '';
+  if (recent && places.length) {
+    const h = document.createElement('li'); h.className = 'sr-head'; h.textContent = 'Zuletzt gesucht'; ul.appendChild(h);
+  }
+  for (const p of places) {
+    const li = document.createElement('li');
+    li.className = 'sr-item';
+    const ic = document.createElement('span'); ic.className = 'sr-ic'; ic.textContent = kindEmoji(p.kind);
+    const txt = document.createElement('div'); txt.className = 'sr-txt';
+    const n = document.createElement('div'); n.className = 'sr-name'; n.textContent = p.short;
+    const s = document.createElement('div'); s.className = 'sr-sub'; s.textContent = p.name;
+    txt.append(n, s);
+    const dist = document.createElement('span'); dist.className = 'sr-dist';
+    dist.textContent = fmtDistance(haversine(ref.lat, ref.lon, p.lat, p.lon));
+    li.append(ic, txt, dist);
+    li.addEventListener('click', () => selectPlace(p));
+    ul.appendChild(li);
+  }
+  ul.classList.toggle('hidden', places.length === 0);
+}
 
 async function doSearch() {
   const q = $('searchInput').value.trim();
   const ul = $('searchResults');
-  if (!q) { ul.classList.add('hidden'); return; }
+  if (!q) { showRecents(); return; }
+  const seq = ++searchSeq;
   ul.innerHTML = '<li class="empty">Suche …</li>';
   ul.classList.remove('hidden');
   try {
-    const places = await searchPlaces(q);
-    ul.innerHTML = '';
+    const ref = searchRef();
+    const places = await searchPlaces(q, { lat: ref.lat, lon: ref.lon });
+    if (seq !== searchSeq) return; // veraltete Antwort verwerfen
     if (!places.length) { ul.innerHTML = '<li class="empty">Nichts gefunden.</li>'; return; }
-    for (const p of places) {
-      const li = document.createElement('li');
-      const n = document.createElement('div'); n.className = 'sr-name'; n.textContent = p.short;
-      const s = document.createElement('div'); s.className = 'sr-sub'; s.textContent = p.name;
-      li.append(n, s);
-      li.addEventListener('click', () => {
-        lastSearchPlace = p;
-        mapView.flyTo(p.lat, p.lon, 14);
-        ul.classList.add('hidden');
-        $('searchInput').value = p.short;
-        startNav(p.lat, p.lon, p.short);
-        showToast(`📍 ${p.short} – Navigation aktiv. „Route zum Ziel" plant automatisch dorthin.`, { duration: 4500 });
-      });
-      ul.appendChild(li);
-    }
+    renderResults(places);
   } catch {
-    ul.innerHTML = '<li class="empty">Suche gerade nicht möglich.</li>';
+    if (seq === searchSeq) ul.innerHTML = '<li class="empty">Suche gerade nicht möglich.</li>';
   }
 }
 
+function showRecents() {
+  const recents = getRecents();
+  if (!recents.length) { $('searchResults').classList.add('hidden'); return; }
+  renderResults(recents, { recent: true });
+}
+
 $('searchBtn').addEventListener('click', doSearch);
-$('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+$('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(searchDebounce); doSearch(); } });
 $('searchInput').addEventListener('input', () => {
-  $('searchClear').classList.toggle('hidden', !$('searchInput').value);
+  const v = $('searchInput').value.trim();
+  $('searchClear').classList.toggle('hidden', !v);
+  clearTimeout(searchDebounce);
+  if (v.length < 2) { showRecents(); return; }
+  searchDebounce = setTimeout(doSearch, 350); // Live-Vorschläge, entprellt
+});
+$('searchInput').addEventListener('focus', () => {
+  if (!$('searchInput').value.trim()) showRecents();
 });
 $('searchClear').addEventListener('click', () => {
   $('searchInput').value = '';
@@ -1364,6 +1626,44 @@ try {
   }
 } catch { /* ignore */ }
 
+// ---------- Karten-Langdruck: Ort, Höhe & Koordinaten ----------
+
+let pinPoint = null;
+
+mapView.onLongPress(async (ll) => {
+  pinPoint = { lat: ll.lat, lon: ll.lng };
+  $('pinName').textContent = 'Wird geladen …';
+  $('pinMeta').textContent = `${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
+  $('pinCard').classList.remove('hidden');
+  const [place, ele] = await Promise.allSettled([
+    reverseGeocode(ll.lat, ll.lng),
+    fetchElevations([[ll.lat, ll.lng]]),
+  ]);
+  if (!pinPoint || pinPoint.lat !== ll.lat || pinPoint.lon !== ll.lng) return; // anderer Punkt inzwischen
+  $('pinName').textContent = (place.status === 'fulfilled' && place.value && place.value.short) ? place.value.short : 'Unbenannter Ort';
+  let meta = `${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
+  if (ele.status === 'fulfilled' && Array.isArray(ele.value) && ele.value[0] != null) meta = `⛰ ${Math.round(ele.value[0])} m · ${meta}`;
+  $('pinMeta').textContent = meta;
+});
+
+$('pinClose').addEventListener('click', () => { $('pinCard').classList.add('hidden'); pinPoint = null; });
+$('pinRoute').addEventListener('click', () => {
+  if (!pinPoint) return;
+  autoRouteTo(pinPoint.lat, pinPoint.lon);
+  $('pinCard').classList.add('hidden');
+});
+$('pinTarget').addEventListener('click', () => {
+  if (!pinPoint) return;
+  targetPoint = { lat: pinPoint.lat, lon: pinPoint.lon, radius: TARGET_RADIUS };
+  arrived.clear();
+  mapView.setTarget(pinPoint.lat, pinPoint.lon, TARGET_RADIUS);
+  $('btnTarget').classList.add('active');
+  updateTargetChip();
+  startNav(pinPoint.lat, pinPoint.lon, $('pinName').textContent || 'Ziel');
+  $('pinCard').classList.add('hidden');
+  showToast('🎯 Ziel gesetzt – Navigation aktiv.');
+});
+
 // ---------- Wetter & Sonnenuntergang ----------
 
 let lastWeatherFetch = { time: 0, lat: null, lon: null };
@@ -1439,14 +1739,17 @@ $('backChip').addEventListener('click', () => {
 // ---------- Automatischer Routenplaner ----------
 
 function autoRouteTo(lat, lng) {
-  const start = lastPosition
-    ? { lat: lastPosition.coords.latitude, lng: lastPosition.coords.longitude }
-    : mapView.getCenter();
-  mapView.setWaypoints([start, { lat, lng }]);
-  switchToTab('route');
-  ensureExpanded();
-  mapView.fitToCoords([[start.lat, start.lng], [lat, lng]]);
-  showToast('Route zu deinem Ziel wird geplant …');
+  // Immer vom echten Standort starten (nicht von der Karten-Mitte → sonst
+  // entstehen unsinnige Routen). Notfalls Ortung anstoßen und danach planen.
+  whenLocated(() => {
+    const start = { lat: lastPosition.coords.latitude, lng: lastPosition.coords.longitude };
+    wpNames = ['Mein Standort', 'Ziel'];
+    mapView.setWaypoints([start, { lat, lng }]);
+    switchToTab('route');
+    ensureExpanded();
+    mapView.fitToCoords([[start.lat, start.lng], [lat, lng]]);
+    showToast('Route von deinem Standort zum Ziel wird geplant …');
+  });
 }
 
 $('btnAutoTarget').addEventListener('click', () => {
@@ -1466,10 +1769,14 @@ $('btnAutoLoop').addEventListener('click', () => {
   showToast(`Rundtour-Vorschlag ~${km} km wird geplant …`, { duration: 5000 });
 });
 
-// Grober Rundweg: Wegpunkte im Ring um den Start, von BRouter über Wege verbunden.
+// Rundweg: Wegpunkte im Ring um den Start, von BRouter über Wege verbunden.
+// Radius aus der Ziel-Länge geschätzt (n-Eck-Umfang × Wege-Faktor), damit die
+// tatsächliche Tour näher an die Wunsch-km kommt.
 function makeLoop(lat, lng, km) {
-  const radius = (km * 1000) / (2 * Math.PI) * 0.75; // Wege sind länger als Luftlinie
-  const n = 5;
+  const n = 6;                 // rundere Schleife als mit 5 Punkten
+  const pathFactor = 1.35;     // reale Wege sind länger als das Luftlinien-Polygon
+  const perimeter = (km * 1000) / pathFactor;
+  const radius = perimeter / (2 * n * Math.sin(Math.PI / n));
   const start = Math.random() * 360;
   const pts = [{ lat, lng }];
   for (let i = 0; i < n; i++) {
@@ -1521,6 +1828,25 @@ setTimeout(hideSplash, 6000);
 const urlParams = new URLSearchParams(location.search);
 const shareToken = urlParams.get('share');
 const groupToken = urlParams.get('group');
+const routeParam = urlParams.get('route');
+
+// Geteilte Route aus dem Link laden (Profil + Wegpunkte → Auto-Recalc).
+if (routeParam && !shareToken) {
+  const dec = decodeRoute(routeParam);
+  if (dec) {
+    if ($('profileSelect')) $('profileSelect').value = dec.profile;
+    wpNames = [];
+    mapView.onReady(() => {
+      mapView.setWaypoints(dec.waypoints);
+      switchToTab('route');
+      ensureExpanded();
+      mapView.fitToCoords(dec.waypoints.map((w) => [w.lat, w.lng]));
+      showToast('🔗 Geteilte Route geladen – wird berechnet …', { duration: 4000 });
+    });
+  } else {
+    showToast('Der Route-Link ist ungültig.', { error: true });
+  }
+}
 
 if (shareToken) {
   initViewer(shareToken);

@@ -36,6 +36,11 @@ function topicFor(token) {
   return TOPIC_PREFIX + token;
 }
 
+const ROUTE_PREFIX = 'wanderplan/route/';
+function routeTopicFor(token) {
+  return ROUTE_PREFIX + token;
+}
+
 // ---------- Verbindung mit Broker-Fallback ----------
 // Probiert die Broker der Reihe nach durch; der erste erreichbare gewinnt.
 
@@ -132,6 +137,7 @@ const shareState = {
   lastPosition: null,
   lastPublish: 0,
   onStatus: null,
+  route: null, // JSON-String der geteilten Route (oder null)
 };
 
 // Startet das Teilen. onStatus(state, text) mit state ∈
@@ -154,6 +160,8 @@ export function startSharing({ name = '', onStatus = () => {} } = {}) {
     onStatus('live', 'Standort wird geteilt.');
     // Zuletzt bekannte Position sofort senden.
     if (shareState.lastPosition) publishNow();
+    // Geteilte Route (falls aktiv) nach (Wieder-)Verbindung erneut senden.
+    if (shareState.route) publishRouteNow();
     client.on('close', handleDrop);
     client.on('offline', handleDrop);
   };
@@ -189,12 +197,29 @@ export function publishPosition(pos) {
   if (Date.now() - shareState.lastPublish >= PUBLISH_INTERVAL) publishNow();
 }
 
+function publishRouteNow() {
+  const c = shareState.client;
+  if (!c || !c.connected || !shareState.token) return;
+  c.publish(routeTopicFor(shareState.token), shareState.route || '', { retain: true, qos: 0 });
+}
+
+// Route an Live-Betrachter mitsenden (retained). coords = [[lat,lon], …];
+// null/leer beendet das Mitsenden (löscht die retained Nachricht).
+export function publishRoute(coords) {
+  if (!shareState.active) return;
+  shareState.route = (coords && coords.length >= 2) ? JSON.stringify({ coords }) : '';
+  publishRouteNow();
+}
+
+export function isSharingRoute() { return !!shareState.route; }
+
 export function stopSharing({ silent = false } = {}) {
   if (shareState.disconnect) shareState.disconnect();
   // Retained Nachricht löschen, damit später niemand die alte Position sieht.
   const c = shareState.client;
   if (c && c.connected && shareState.token) {
     try { c.publish(topicFor(shareState.token), '', { retain: true, qos: 0 }); } catch {}
+    try { c.publish(routeTopicFor(shareState.token), '', { retain: true, qos: 0 }); } catch {}
   }
   if (c) { try { c.end(true); } catch {} }
   releaseWakeLock();
@@ -204,6 +229,7 @@ export function stopSharing({ silent = false } = {}) {
   shareState.client = null;
   shareState.disconnect = null;
   shareState.lastPosition = null;
+  shareState.route = null;
   shareState.reconnecting = false;
   if (wasActive && !silent && shareState.onStatus) shareState.onStatus('stopped', 'Teilen beendet.');
 }
@@ -365,19 +391,26 @@ const viewState = { disconnect: null, client: null };
 
 // Verbindet als Betrachter. onMessage(data) bei jeder Position,
 // onStatus(state, text) für Verbindungszustände.
-export function startViewing(token, { onMessage = () => {}, onStatus = () => {} } = {}) {
+export function startViewing(token, { onMessage = () => {}, onStatus = () => {}, onRoute = () => {} } = {}) {
   stopViewing();
   const topic = topicFor(token);
+  const routeTopic = routeTopicFor(token);
 
   const open = (client) => {
     viewState.client = client;
-    client.subscribe(topic, { qos: 0 }, (err) => {
+    client.subscribe([topic, routeTopic], { qos: 0 }, (err) => {
       if (err) { onStatus('error', 'Konnte nicht abonnieren.'); return; }
       onStatus('waiting', 'Warte auf Standort …');
     });
     client.on('message', (t, payload) => {
-      if (t !== topic) return;
       const text = payload.toString();
+      if (t === routeTopic) {
+        // Geteilte Route (oder Löschung).
+        if (!text) { onRoute(null); return; }
+        try { const d = JSON.parse(text); if (Array.isArray(d.coords)) onRoute(d.coords); } catch {}
+        return;
+      }
+      if (t !== topic) return;
       if (!text) { onStatus('ended', 'Der Sender hat das Teilen beendet.'); return; }
       try {
         const data = JSON.parse(text);
