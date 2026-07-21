@@ -191,17 +191,42 @@ function addOverlayLayers() {
 let changeHandler = null;
 let mapClickEnabled = true;
 let clickHandler = null;
+let longPressHandler = null;
+let suppressNextClick = false;
 
 export function onWaypointsChanged(fn) { changeHandler = fn; }
 export function setMapClickEnabled(enabled) { mapClickEnabled = enabled; }
 export function setClickHandler(fn) { clickHandler = fn; }
+export function onLongPress(fn) { longPressHandler = fn; }
 function notifyChange() { if (changeHandler) changeHandler(); }
 
 map.on('click', (e) => {
+  if (suppressNextClick) { suppressNextClick = false; return; }
   const ll = { lat: e.lngLat.lat, lng: e.lngLat.lng };
   if (clickHandler) { clickHandler(ll); return; }
   if (mapClickEnabled) addWaypoint(ll);
 });
+
+// Langer Druck (Rechtsklick am Desktop, gehaltener Finger am Handy) → Info-Callback.
+function fireLongPress(lngLat) {
+  if (longPressHandler) { suppressNextClick = true; longPressHandler({ lat: lngLat.lat, lng: lngLat.lng }); }
+}
+map.on('contextmenu', (e) => fireLongPress(e.lngLat));
+
+let lpTimer = null, lpLngLat = null, lpPoint = null;
+map.on('touchstart', (e) => {
+  if (!longPressHandler || !e.points || e.points.length !== 1) return;
+  lpLngLat = e.lngLat; lpPoint = e.point;
+  clearTimeout(lpTimer);
+  lpTimer = setTimeout(() => { lpTimer = null; if (lpLngLat) fireLongPress(lpLngLat); }, 550);
+});
+const cancelLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+map.on('touchend', cancelLp);
+map.on('touchcancel', cancelLp);
+map.on('touchmove', (e) => {
+  if (lpTimer && lpPoint && e.point && Math.hypot(e.point.x - lpPoint.x, e.point.y - lpPoint.y) > 12) cancelLp();
+});
+map.on('dragstart', cancelLp);
 
 let waypointMarkers = [];
 
@@ -318,6 +343,28 @@ export function setView(lat, lng, zoom) {
   map.easeTo({ center: [lng, lat], zoom: zoom != null ? zoom : map.getZoom(), duration: 500, essential: true });
 }
 export function panTo(lat, lng, zoom) { setView(lat, lng, zoom); }
+
+// Sanftes Nachführen beim Folgen (kurze Animation, optional Blickrichtung
+// für den Navigations-Modus – Heading-Up).
+export function followTo(lat, lng, { zoom, bearing } = {}) {
+  map.easeTo({
+    center: [lng, lat],
+    zoom: zoom != null ? zoom : map.getZoom(),
+    bearing: bearing != null ? bearing : map.getBearing(),
+    duration: 320,
+    essential: true,
+  });
+}
+export function setBearing(deg) { map.easeTo({ bearing: deg, duration: 320, essential: true }); }
+export function getBearing() { return map.getBearing(); }
+// Luftlinien-Abstand (m) eines Punktes zur aktuellen Karten-Mitte.
+export function distanceToCenter(lat, lng) {
+  const c = map.getCenter();
+  const R = 6371000, toRad = Math.PI / 180;
+  const dLat = (lat - c.lat) * toRad, dLng = (lng - c.lng) * toRad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(c.lat * toRad) * Math.cos(lat * toRad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
 export function flyTo(lat, lng, zoom) {
   map.flyTo({ center: [lng, lat], zoom: zoom != null ? zoom : Math.max(map.getZoom(), 14), speed: 1.4, curve: 1.5, essential: true });
 }

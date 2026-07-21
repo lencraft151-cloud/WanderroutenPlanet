@@ -182,6 +182,11 @@ main {
 .search-results .sr-name { font-weight: 600; }
 .search-results .sr-sub { font-size: 0.75rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-results .empty { color: var(--text-dim); cursor: default; }
+.search-results .sr-head { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); padding: 4px 10px 2px; cursor: default; }
+.search-results .sr-item { display: flex; align-items: center; gap: 10px; }
+.search-results .sr-ic { font-size: 1.1rem; flex: none; }
+.search-results .sr-txt { flex: 1; min-width: 0; }
+.search-results .sr-dist { flex: none; font-size: 0.74rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .search-clear {
   border: none; background: transparent; color: var(--text-dim);
   font-size: 1.1rem; cursor: pointer; width: 28px; height: 28px; flex: none; border-radius: 50%;
@@ -230,6 +235,7 @@ body.sheet-dragging .chip-stack { transition: none; }
 .chip.clickable { cursor: pointer; }
 .chip.warn { background: rgba(224, 138, 30, 0.92); color: #26170a; border-color: transparent; }
 .chip.target { background: rgba(230, 126, 34, 0.94); color: #241304; border-color: transparent; cursor: pointer; }
+.chip.accent { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; }
 
 .gps-chip {
   position: absolute; right: 12px;
@@ -293,6 +299,42 @@ body.sheet-dragging .map-fabs { transition: none; }
 .diff-badge { font-weight: 800; font-size: 0.78rem; padding: 4px 11px; border-radius: var(--pill); color: #fff; box-shadow: var(--shadow-sm); }
 .btn-mini { padding: 6px 11px; font-size: 0.8rem; }
 .btn-mini.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+/* Wegpunkt-Liste */
+.wp-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wp-list li { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; font-size: 0.85rem; }
+.wp-list .wp-badge { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 0.72rem; display: flex; align-items: center; justify-content: center; flex: none; }
+.wp-list .wp-badge.start { background: #2e9e4f; }
+.wp-list .wp-badge.end { background: var(--danger); }
+.wp-list .wp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: transparent; border: none; color: var(--text); font-size: 0.85rem; outline: none; }
+.wp-list .wp-btns { display: flex; gap: 2px; flex: none; }
+.wp-list .wp-btns button { border: none; background: transparent; color: var(--text-dim); font-size: 0.9rem; cursor: pointer; width: 26px; height: 26px; border-radius: 6px; }
+.wp-list .wp-btns button:disabled { opacity: 0.3; cursor: default; }
+.wp-list .wp-btns button:active:not(:disabled) { background: var(--surface); }
+
+/* Umschalt-Zeile (z. B. Route mitsenden) */
+.switch-row { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; margin: 8px 0; cursor: pointer; }
+.switch-row input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+
+/* Karten-Langdruck-Info-Karte */
+.pin-card {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--sheet-h) + 16px);
+  width: min(320px, calc(100% - 24px));
+  background: var(--glass);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border); border-radius: 16px;
+  padding: 12px 14px; box-shadow: var(--shadow); z-index: 1100;
+  transition: bottom 0.25s ease;
+}
+body.sheet-dragging .pin-card { transition: none; }
+.pin-card .pin-name { font-weight: 700; font-size: 0.95rem; padding-right: 22px; }
+.pin-card .pin-meta { font-size: 0.78rem; color: var(--text-dim); margin: 4px 0 10px; font-variant-numeric: tabular-nums; }
+.pin-card .btn-row { margin: 0; }
+.pin-close { position: absolute; top: 8px; right: 8px; border: none; background: transparent; color: var(--text-dim); font-size: 0.95rem; cursor: pointer; }
+@media (min-width: 900px) {
+  .pin-card { left: 420px; transform: none; bottom: 20px; }
+}
 
 /* POI-Marker (Emoji) */
 .poi-icon {
@@ -525,7 +567,7 @@ select#loopKm, .field-row select {
   .action-bar { padding-top: 12px; }
   .map-fabs { bottom: 28px; }
   .gps-chip { bottom: 28px; }
-  .chip-stack { bottom: 28px; }
+  .chip-stack { left: 420px; bottom: 28px; }
   .search-wrap { left: 420px; top: 16px; }
   .nav-panel { left: 420px; top: 70px; }
   .viewer-card { left: 20px; right: auto; bottom: auto; top: calc(var(--topbar-h) + 20px); width: 360px; }
