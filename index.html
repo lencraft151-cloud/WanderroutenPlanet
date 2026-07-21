@@ -34,6 +34,7 @@
       </button>
       <span id="compassText" class="compass-text">–</span>
       <button id="themeBtn" class="icon-btn" title="Hell / Dunkel umschalten" aria-label="Hell/Dunkel">🌙</button>
+      <a id="appDownloadBtn" class="icon-btn" href="apk/" title="WanderPlan als Android-App holen" aria-label="App herunterladen">📱</a>
       <button id="helpBtn" class="icon-btn" title="Hilfe & Erklärung" aria-label="Hilfe">❓</button>
     </div>
   </header>
@@ -52,6 +53,7 @@
 
     <div class="map-fabs">
       <button id="btn3d" class="fab" title="2D/3D umschalten" aria-label="2D/3D umschalten">⛰</button>
+      <button id="btnPoi" class="fab" title="Interessante Orte in der Nähe (Hütten, Gipfel, Wasser …)" aria-label="Orte in der Nähe">📌</button>
       <button id="btnTarget" class="fab hidden" title="Ziel & Ankunfts-Alarm setzen" aria-label="Ziel setzen">🎯</button>
       <button id="btnCenterShared" class="fab hidden" title="Auf geteilten Standort zentrieren" aria-label="Zentrieren">◎</button>
       <button id="btnLocate" class="fab" title="Meine Position anzeigen" aria-label="Meine Position anzeigen">📍</button>
@@ -63,6 +65,16 @@
       <div id="targetChip" class="chip target hidden"></div>
     </div>
     <div id="gpsChip" class="gps-chip hidden"></div>
+
+    <!-- Ziel-Navigation: Pfeil zum Ziel + Entfernung/ETA -->
+    <div id="navPanel" class="nav-panel hidden">
+      <div class="nav-arrow-wrap"><div class="nav-arrow" id="navArrow">▲</div></div>
+      <div class="nav-info">
+        <div class="nav-dist" id="navDist">–</div>
+        <div class="nav-eta" id="navEta">Ziel-Navigation</div>
+      </div>
+      <button id="navClose" class="nav-close" title="Navigation beenden" aria-label="Navigation beenden">✕</button>
+    </div>
 
     <!-- Betrachter-Karte (Solo-Teil-Link) -->
     <section id="viewerCard" class="viewer-card hidden">
@@ -143,6 +155,11 @@
           <div class="stat"><span class="stat-value" id="statAscent">–</span><span class="stat-label">Anstieg</span></div>
           <div class="stat"><span class="stat-value" id="statDescent">–</span><span class="stat-label">Abstieg</span></div>
           <div class="stat"><span class="stat-value" id="statDuration">–</span><span class="stat-label">Gehzeit</span></div>
+        </div>
+        <div id="routeExtras" class="route-extras hidden">
+          <span id="diffBadge" class="diff-badge" title="Geschätzte Schwierigkeit (SAC-Wanderskala)"></span>
+          <button id="btnSlope" class="btn btn-mini" title="Steigung farbig auf der Route anzeigen">🎨 Steigung</button>
+          <button id="btnFlyover" class="btn btn-mini" title="Route in 3D abfliegen">🎬 Flyover</button>
         </div>
         <div class="chart-wrap">
           <canvas id="elevationChart"></canvas>

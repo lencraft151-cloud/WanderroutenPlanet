@@ -11,6 +11,8 @@ import * as storage from './storage.js';
 import * as share from './share.js';
 import { searchPlaces } from './search.js';
 import { fetchWeather, weatherInfo } from './weather.js';
+import { fetchPois } from './poi.js';
+import { computeDifficulty, buildGradeSegments } from './difficulty.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,8 +26,10 @@ function fmtDistance(m) {
 
 function fmtDuration(sec) {
   if (sec == null) return '–';
-  const h = Math.floor(sec / 3600);
-  const min = Math.round((sec % 3600) / 60);
+  // Erst auf ganze Minuten runden, dann teilen – sonst entsteht „2 h 60 min".
+  const totalMin = Math.round(sec / 60);
+  const h = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
   return h > 0 ? `${h} h ${min} min` : `${min} min`;
 }
 
@@ -216,6 +220,7 @@ function showRoute(route) {
   updateRouteStats(route.stats);
   const hasProfile = chart.setData(route.coords);
   $('chartEmpty').classList.toggle('hidden', hasProfile);
+  updateRouteExtras(route);
 }
 
 function clearRouteDisplay() {
@@ -226,6 +231,22 @@ function clearRouteDisplay() {
   $('chartEmpty').classList.remove('hidden');
   updateRouteStats(null);
   setRouteStatus(null);
+  stopFlyover();
+  mapView.clearRouteGrade();
+  $('routeExtras').classList.add('hidden');
+}
+
+// Schwierigkeits-Badge + Steigungs-Segmente aktualisieren.
+function updateRouteExtras(route) {
+  const extras = $('routeExtras');
+  const diff = computeDifficulty(route.coords, route.stats);
+  if (!diff) { extras.classList.add('hidden'); mapView.clearRouteGrade(); return; }
+  const badge = $('diffBadge');
+  badge.textContent = `${diff.grade} · ${diff.label} · max ${diff.maxGrade}%`;
+  badge.style.background = diff.color;
+  extras.classList.remove('hidden');
+  // Steigungs-Overlay vorbereiten (Sichtbarkeit steuert der Umschalter).
+  mapView.drawRouteGrade(buildGradeSegments(route.coords));
 }
 
 async function recalcRoute() {
@@ -431,6 +452,7 @@ sensors.onPosition((pos) => {
   updateTargetChip();
   updateConnector();
   updateBackChip();
+  updateNav();
   updateWeather(latitude, longitude);
 });
 
@@ -499,6 +521,7 @@ function handleHeading(heading) {
   $('compassRose').style.transform = `rotate(${roseRotation}deg)`;
   $('compassText').textContent = `${String(Math.round(heading)).padStart(3, '0')}° ${cardinal(heading)}`;
   mapView.setPositionHeading(heading);
+  updateNav();
 }
 
 $('compassBtn').addEventListener('click', async () => {
@@ -1066,7 +1089,8 @@ $('btnTarget').addEventListener('click', async () => {
     mapView.setTarget(ll.lat, ll.lng, TARGET_RADIUS);
     $('btnTarget').classList.add('active');
     updateTargetChip();
-    showToast('Ziel gesetzt – Benachrichtigung bei Ankunft (150 m).', { duration: 4000 });
+    startNav(ll.lat, ll.lng, 'Ziel');
+    showToast('Ziel gesetzt – Navigation aktiv, Benachrichtigung bei Ankunft (150 m).', { duration: 4000 });
   });
 });
 
@@ -1186,7 +1210,8 @@ async function doSearch() {
         mapView.flyTo(p.lat, p.lon, 14);
         ul.classList.add('hidden');
         $('searchInput').value = p.short;
-        showToast(`📍 ${p.short} – „Route zum Ziel" plant automatisch dorthin.`, { duration: 4500 });
+        startNav(p.lat, p.lon, p.short);
+        showToast(`📍 ${p.short} – Navigation aktiv. „Route zum Ziel" plant automatisch dorthin.`, { duration: 4500 });
       });
       ul.appendChild(li);
     }
@@ -1210,6 +1235,134 @@ $('searchClear').addEventListener('click', () => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-wrap')) $('searchResults').classList.add('hidden');
 });
+
+// ---------- Interessante Orte (POI) in der Nähe ----------
+
+let poiActive = false;
+
+$('btnPoi').addEventListener('click', async () => {
+  if (poiActive) {
+    poiActive = false;
+    mapView.clearPois();
+    $('btnPoi').classList.remove('active');
+    return;
+  }
+  const c = mapView.getCenter();
+  $('btnPoi').classList.add('busy');
+  try {
+    const list = await fetchPois(c.lat, c.lng, { radiusM: 4000, limit: 40 });
+    if (!list.length) { showToast('Keine besonderen Orte in der Nähe gefunden.'); return; }
+    mapView.setPois(list);
+    poiActive = true;
+    $('btnPoi').classList.add('active');
+    showToast(`📌 ${list.length} Orte in der Nähe – antippen für Navigation dorthin.`, { duration: 4000 });
+  } catch {
+    showToast('Orte gerade nicht abrufbar. Bist du online?', { error: true });
+  } finally {
+    $('btnPoi').classList.remove('busy');
+  }
+});
+
+mapView.onPoiClick((p) => {
+  lastSearchPlace = { short: p.name, name: p.name, lat: p.lat, lon: p.lon };
+  mapView.flyTo(p.lat, p.lon, Math.max(mapView.getZoom(), 14));
+  startNav(p.lat, p.lon, p.name);
+  const eleTxt = p.ele != null ? ` · ${p.ele} m` : '';
+  showToast(`${p.emoji} ${p.name}${eleTxt} – Navigation aktiv. „Route zum Ziel" plant den Weg dorthin.`, { duration: 5000 });
+});
+
+// ---------- Ziel-Navigation (Pfeil + Entfernung/ETA) ----------
+
+let navTarget = null; // { lat, lon, name }
+
+function bearingTo(lat1, lon1, lat2, lon2) {
+  const toRad = Math.PI / 180, toDeg = 180 / Math.PI;
+  const dLon = (lon2 - lon1) * toRad;
+  const y = Math.sin(dLon) * Math.cos(lat2 * toRad);
+  const x = Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad)
+    - Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos(dLon);
+  return (Math.atan2(y, x) * toDeg + 360) % 360;
+}
+
+function startNav(lat, lon, name) {
+  navTarget = { lat, lon, name: name || 'Ziel' };
+  $('navPanel').classList.remove('hidden');
+  updateNav();
+}
+
+function stopNav() {
+  navTarget = null;
+  $('navPanel').classList.add('hidden');
+}
+
+$('navClose').addEventListener('click', stopNav);
+
+function fmtEta(distanceM, speedMs) {
+  const v = speedMs && speedMs > 0.5 ? speedMs : 1.1; // sonst ~4 km/h annehmen
+  const secs = distanceM / v;
+  if (secs < 60) return '< 1 min';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return `${h} h ${m} min`;
+}
+
+function updateNav() {
+  if (!navTarget) return;
+  if (!lastPosition) {
+    $('navDist').textContent = '–';
+    $('navEta').textContent = `nach ${navTarget.name} · orte dich`;
+    return;
+  }
+  const { latitude, longitude, speed } = lastPosition.coords;
+  const dist = haversine(latitude, longitude, navTarget.lat, navTarget.lon);
+  const brng = bearingTo(latitude, longitude, navTarget.lat, navTarget.lon);
+  const rot = brng - (lastHeading != null ? lastHeading : 0);
+  $('navArrow').style.transform = `rotate(${rot}deg)`;
+  $('navDist').textContent = fmtDistance(dist);
+  $('navEta').textContent = `${navTarget.name} · ${fmtEta(dist, speed)}`;
+}
+
+// ---------- Steigungs-Einfärbung umschalten ----------
+
+$('btnSlope').addEventListener('click', () => {
+  const on = !mapView.isRouteGradeVisible();
+  mapView.setRouteGradeVisible(on);
+  $('btnSlope').classList.toggle('active', on);
+  showToast(on ? '🎨 Steigung farbig: grün = flach, rot = steil.' : 'Steigungs-Farben aus.');
+});
+
+// ---------- Routen-Flyover (animierte 3D-Kamerafahrt) ----------
+
+function stopFlyover() {
+  mapView.stopFlyover();
+  mapView.hideHighlight();
+  $('btnFlyover').classList.remove('active');
+  $('btnFlyover').textContent = '🎬 Flyover';
+}
+
+$('btnFlyover').addEventListener('click', () => {
+  if (mapView.isFlyover()) { stopFlyover(); return; }
+  if (!currentRoute || !currentRoute.coords || currentRoute.coords.length < 2) {
+    showToast('Erst eine Route planen, dann abfliegen.', { duration: 3500 });
+    return;
+  }
+  follow = false;
+  $('btnFlyover').classList.add('active');
+  $('btnFlyover').textContent = '⏹ Stopp';
+  mapView.flyover(currentRoute.coords, {
+    onStep: (t, ll) => mapView.showHighlight(ll[0], ll[1]),
+    onDone: () => { stopFlyover(); mapView.fitToCoords(currentRoute.coords.map((c) => [c[0], c[1]])); },
+  });
+});
+
+// ---------- App-Download-Button in der nativen App ausblenden ----------
+
+try {
+  if (window.WanderPlanNative && typeof WanderPlanNative.isNativeApp === 'function' && WanderPlanNative.isNativeApp()) {
+    $('appDownloadBtn').style.display = 'none';
+  }
+} catch { /* ignore */ }
 
 // ---------- Wetter & Sonnenuntergang ----------
 

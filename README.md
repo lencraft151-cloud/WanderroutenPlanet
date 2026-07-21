@@ -17,6 +17,16 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   (OpenStreetMap-Nominatim).
 - **🤖 Automatischer Routenplaner**: Route von deinem Standort zum gesuchten
   oder angetippten Ziel – oder eine **Rundtour** in Wunschlänge.
+- **📌 Orte in der Nähe**: Hütten, Gipfel, Wasserquellen, Aussichtspunkte und
+  Bänke rund um den Kartenausschnitt (OpenStreetMap-Overpass, keyless) – antippen
+  startet die Navigation dorthin.
+- **🧭 Ziel-Navigation**: Kompass-Pfeil, der immer zum Ziel zeigt, plus
+  Luftlinien-Entfernung und geschätzte Ankunftszeit (ETA).
+- **⚠️ Schwierigkeit & Steigung**: grobe SAC-Einstufung (T1–T5) samt maximaler
+  Steigung und optionaler farbiger Steigungsanzeige auf der Route (grün = flach,
+  rot = steil).
+- **🎬 Routen-Flyover**: die geplante Route in 3D abfliegen (animierte
+  Kamerafahrt) – perfekt zur Tour-Vorschau.
 - **🌦 Wetter & 🌇 Sonnenuntergang** an der Position: aktuelles Wetter und
   „noch X Std bis Sonnenuntergang" mit Warnung bei Dämmerung (Open-Meteo).
 - **↩ Zurück zum Start**: Chip mit Richtung und Entfernung zum Startpunkt.
@@ -186,6 +196,8 @@ js/elevation.js       Höhenprofil-Canvas
 js/gpx.js             GPX erzeugen/parsen
 js/storage.js         localStorage-Verwaltung
 js/search.js          Ortssuche (Nominatim)
+js/poi.js             Orte in der Nähe (Overpass)
+js/difficulty.js      SAC-Schwierigkeit & Steigungsanalyse
 js/weather.js         Wetter & Sonnenzeiten (Open-Meteo)
 js/share.js           Live-Standort teilen (MQTT, Token/Link, Wake Lock)
 

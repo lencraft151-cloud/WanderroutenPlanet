@@ -20,8 +20,8 @@ import androidx.core.content.ContextCompat
 
 /**
  * Vollbild-WebView, die die live gehostete WanderPlan-Seite lädt
- * (https://lencraft151-cloud.github.io/Claude/). Dadurch bekommt die App bei
- * jedem Web-Deploy automatisch die neuesten Features – ohne App-Update.
+ * (https://lencraft151-cloud.github.io/WanderroutenPlanet/). Dadurch bekommt die
+ * App bei jedem Web-Deploy automatisch die neuesten Features – ohne App-Update.
  *
  * Zusätzlich stellt sie die Brücke `WanderPlanNative` bereit: startet/stoppt
  * die Web-Seite das Standort-Teilen, übernimmt hier ein nativer
@@ -34,7 +34,7 @@ class MainActivity : AppCompatActivity() {
     // Für einen später erneut auszuführenden Start des Teilens (nach Rechte-Dialog).
     private var pendingShare: String? = null
 
-    private val LIVE_URL = "https://lencraft151-cloud.github.io/Claude/"
+    private val LIVE_URL = "https://lencraft151-cloud.github.io/WanderroutenPlanet/"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
