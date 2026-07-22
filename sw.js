@@ -1,6 +1,6 @@
 // WanderPlan Service Worker – App-Shell-Cache für Offline-Start und PWA.
 
-const CACHE = 'wanderplan-v12';
+const CACHE = 'wanderplan-v13';
 
 const SHELL = [
   './',
@@ -21,6 +21,7 @@ const SHELL = [
   'js/difficulty.js',
   'js/routecodec.js',
   'js/i18n.js',
+  'js/trails.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',

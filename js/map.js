@@ -374,17 +374,33 @@ export function clearWaypoints({ silent = false } = {}) {
   if (!silent) notifyChange();
 }
 
-export function setWaypoints(latlngs) {
+export function setWaypoints(latlngs, { silent = false } = {}) {
   clearWaypoints({ silent: true });
   waypointMarkers = latlngs.map((ll) => createWaypointMarker(ll));
   renumberWaypoints();
-  notifyChange();
+  if (!silent) notifyChange();
 }
 
 export function getWaypoints() {
   return waypointMarkers.map((m) => {
     const ll = m.getLngLat();
     return { lat: ll.lat, lng: ll.lng };
+  });
+}
+
+// Zieht jeden Wegpunkt-Marker auf den nächstgelegenen Punkt der berechneten
+// Route (echter Weg) – so sitzen alle Punkte GENAU auf dem Weg, nicht daneben.
+// Ändert nur die Marker-Position, löst KEINE Neuberechnung aus.
+export function snapWaypointsToRoute(coords) {
+  if (!coords || coords.length < 2) return;
+  waypointMarkers.forEach((m) => {
+    const ll = m.getLngLat();
+    let best = null; let bestD = Infinity;
+    for (const c of coords) {
+      const d = (c[0] - ll.lat) ** 2 + (c[1] - ll.lng) ** 2;
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    if (best) m.setLngLat([best[1], best[0]]);
   });
 }
 

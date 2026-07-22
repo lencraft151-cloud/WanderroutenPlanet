@@ -16,7 +16,13 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **🔎 Ortssuche**: Ort, Berg oder Hütte eingeben – die Karte fliegt hin
   (OpenStreetMap-Nominatim).
 - **🤖 Automatischer Routenplaner**: Route von deinem Standort zum gesuchten
-  oder angetippten Ziel – oder eine **Rundtour** in Wunschlänge.
+  oder angetippten Ziel – oder eine **Rundtour** in Wunschlänge. Die Rundtour ist
+  **garantiert geschlossen** (endet exakt am Start) und probiert mehrere Varianten,
+  bis eine echte Wege-Schleife herauskommt (keine Luftlinie).
+- **📍 Punkte genau auf dem Weg**: gesetzte Wegpunkte werden nach der Berechnung
+  **auf die echte Route gezogen** – sie sitzen exakt auf Wegen/Straßen, nicht daneben.
+- **🥾 Fertige Wanderwege**: „Wanderwege suchen" listet **vorhandene Touren aus
+  OpenStreetMap** (route=hiking) in der Nähe – antippen lädt die komplette Strecke.
 - **📌 Orte in der Nähe**: Hütten & Almen, Gipfel, **Seilbahnen/Lifte**,
   Wasserquellen, Aussichtspunkte und Einkehr rund um den Kartenausschnitt
   (OpenStreetMap-Overpass, keyless) – antippen öffnet eine Info-Karte mit

@@ -14,6 +14,7 @@ import { fetchWeather, weatherInfo } from './weather.js';
 import { fetchPois } from './poi.js';
 import { computeDifficulty, buildGradeSegments } from './difficulty.js';
 import { buildRouteLink, decodeRoute } from './routecodec.js';
+import { fetchHikingRoutes } from './trails.js';
 import { t, setLang, getLang, applyStatic, toggleLang } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -279,6 +280,8 @@ async function recalcRoute() {
   const result = await calculateRoute(waypoints, $('profileSelect').value);
   if (reqId !== routeRequestId) return;
   showRoute({ ...result, source: 'planned' });
+  // Wegpunkte GENAU auf den berechneten Weg ziehen (nicht daneben).
+  if (!result.fallback) { mapView.snapWaypointsToRoute(result.coords); renderWaypointList(); }
   setRouteStatus(
     result.fallback ? '⚠ Routing-Dienst nicht erreichbar – es wird die Luftlinie angezeigt.' : null,
     true
@@ -2121,26 +2124,75 @@ $('btnAutoTarget').addEventListener('click', () => {
   mapView.setClickHandler((ll) => { mapView.setClickHandler(null); autoRouteTo(ll.lat, ll.lng); });
 });
 
-$('btnAutoLoop').addEventListener('click', () => {
+$('btnAutoLoop').addEventListener('click', () => generateLoop());
+
+// Erzeugt garantiert eine geschlossene Rundtour über echte Wege: Es werden
+// mehrere Ring-Varianten probiert, bis BRouter eine echte Wanderroute liefert
+// (keine Luftlinie); die Route wird am Ende exakt zum Start geschlossen und die
+// Wegpunkte auf den Weg gezogen.
+let loopBusy = false;
+async function generateLoop() {
+  if (loopBusy) return;
+  loopBusy = true;
   const km = parseFloat($('loopKm').value) || 10;
   const c = lastPosition
     ? { lat: lastPosition.coords.latitude, lng: lastPosition.coords.longitude }
     : mapView.getCenter();
-  mapView.setWaypoints(makeLoop(c.lat, c.lng, km));
   switchToTab('route');
   ensureExpanded();
-  showToast(`Rundtour-Vorschlag ~${km} km wird geplant …`, { duration: 5000 });
-});
+  setRouteStatus('Rundtour über Wege wird gesucht …');
+  showToast(`Rundtour ~${km} km wird gesucht …`, { duration: 3000 });
+  const profile = $('profileSelect').value;
+  const reqId = ++routeRequestId;
+  let best = null;
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const pts = makeLoop(c.lat, c.lng, km, attempt);
+      const result = await calculateRoute(pts, profile);
+      if (reqId !== routeRequestId) { loopBusy = false; return; } // inzwischen etwas anderes
+      if (result && !result.fallback && isLoopClosed(result.coords)) { best = { pts, result }; break; }
+      if (result && !best) best = { pts, result }; // Notnagel merken
+    }
+  } catch { /* unten behandelt */ }
+  if (reqId !== routeRequestId) { loopBusy = false; return; }
+  if (best && !best.result.fallback) {
+    wpNames = [];
+    mapView.setWaypoints(best.pts, { silent: true });
+    const coords = closeLoopCoords(best.result.coords); // 100 % geschlossene Schleife
+    showRoute({ coords, stats: computeStats(coords), fallback: false, source: 'planned' });
+    mapView.snapWaypointsToRoute(coords);
+    renderWaypointList();
+    setRouteStatus(null);
+    showToast(`🔄 Rundtour ~${km} km erzeugt.`, { duration: 3500 });
+  } else {
+    setRouteStatus('Keine Rundtour über Wege gefunden – anderen Startpunkt oder eine andere Länge versuchen.', true);
+    showToast('Keine echte Rundtour gefunden – versuch einen anderen Startpunkt oder eine andere Länge.', { error: true, duration: 5000 });
+  }
+  loopBusy = false;
+}
 
-// Rundweg: Wegpunkte im Ring um den Start, von BRouter über Wege verbunden.
-// Radius aus der Ziel-Länge geschätzt (n-Eck-Umfang × Wege-Faktor), damit die
-// tatsächliche Tour näher an die Wunsch-km kommt.
-function makeLoop(lat, lng, km) {
-  const n = 6;                 // rundere Schleife als mit 5 Punkten
-  const pathFactor = 1.35;     // reale Wege sind länger als das Luftlinien-Polygon
+// Ist die Route (fast) geschlossen? Start und Ende nah beieinander.
+function isLoopClosed(coords) {
+  if (!coords || coords.length < 3) return false;
+  const a = coords[0]; const b = coords[coords.length - 1];
+  return haversine(a[0], a[1], b[0], b[1]) < 80;
+}
+// Schließt die Route exakt: hängt den Startpunkt ans Ende, falls eine Lücke bleibt.
+function closeLoopCoords(coords) {
+  if (!coords || coords.length < 3) return coords;
+  const a = coords[0]; const b = coords[coords.length - 1];
+  if (haversine(a[0], a[1], b[0], b[1]) > 20) return coords.concat([[a[0], a[1], a[2] == null ? null : a[2]]]);
+  return coords;
+}
+
+// Rundweg-Wegpunkte im Ring um den Start; attempt variiert Drehung/Radius, damit
+// bei einem misslungenen Versuch eine andere Schleife probiert werden kann.
+function makeLoop(lat, lng, km, attempt = 0) {
+  const n = 6;                              // rundere Schleife
+  const pathFactor = 1.35 + attempt * 0.1;  // reale Wege sind länger als das Polygon
   const perimeter = (km * 1000) / pathFactor;
   const radius = perimeter / (2 * n * Math.sin(Math.PI / n));
-  const start = Math.random() * 360;
+  const start = (attempt * 53 + Math.random() * 360) % 360;
   const pts = [{ lat, lng }];
   for (let i = 0; i < n; i++) {
     const brng = (start + i * (360 / n)) * Math.PI / 180;
@@ -2150,6 +2202,57 @@ function makeLoop(lat, lng, km) {
   }
   pts.push({ lat, lng });
   return pts;
+}
+
+// ---------- Fertige Wanderwege (OSM route=hiking) ----------
+$('btnTrails').addEventListener('click', async () => {
+  const btn = $('btnTrails');
+  const ref = lastPosition
+    ? { lat: lastPosition.coords.latitude, lon: lastPosition.coords.longitude }
+    : (() => { const g = mapView.getCenter(); return { lat: g.lat, lon: g.lng }; })();
+  btn.classList.add('busy'); btn.disabled = true;
+  setRouteStatus(t('trails.searching'));
+  try {
+    const routes = await fetchHikingRoutes(ref.lat, ref.lon, { radiusM: 15000, limit: 12 });
+    renderTrailList(routes);
+    setRouteStatus(routes.length ? null : t('trails.none'), !routes.length);
+  } catch {
+    setRouteStatus(t('trails.err'), true);
+  } finally { btn.classList.remove('busy'); btn.disabled = false; }
+});
+
+function renderTrailList(routes) {
+  const ul = $('trailList');
+  ul.innerHTML = '';
+  if (!routes || !routes.length) { ul.classList.add('hidden'); return; }
+  ul.classList.remove('hidden');
+  routes.forEach((r) => {
+    const li = document.createElement('li');
+    li.className = 'item';
+    const info = document.createElement('div'); info.className = 'item-info';
+    const name = document.createElement('div'); name.className = 'item-name';
+    name.textContent = (r.ref ? r.ref + ' · ' : '') + r.name;
+    const meta = document.createElement('div'); meta.className = 'item-meta';
+    meta.textContent = `${fmtDistance(r.length)} · ${fmtDistance(r.dist)} ${t('trails.away')}`;
+    info.append(name, meta);
+    const load = document.createElement('button'); load.className = 'item-btn';
+    load.textContent = t('trails.load');
+    load.addEventListener('click', () => loadTrail(r));
+    li.append(info, load);
+    ul.appendChild(li);
+  });
+}
+
+function loadTrail(r) {
+  mapView.clearWaypoints({ silent: true });
+  wpNames = [];
+  routeRequestId++; // eventuell laufende Berechnung abbrechen
+  const coords = r.coords.map((c) => [c[0], c[1], null]);
+  showRoute({ coords, stats: computeStats(coords), fallback: false, source: 'imported', name: r.name });
+  mapView.fitToCoords(coords);
+  switchToTab('route');
+  ensureExpanded();
+  showToast(`🥾 „${r.name}" – ${fmtDistance(r.length)}`, { duration: 4000 });
 }
 
 // Name für den eigenen Punkt merken, wenn im Teilen-Feld eingegeben.
