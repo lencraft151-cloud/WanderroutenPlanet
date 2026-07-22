@@ -2276,15 +2276,19 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   } catch { /* egal */ }
 
   const hadController = !!navigator.serviceWorker.controller;
-  let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloaded) return;
-    reloaded = true;
     // Nur bei einem echten Update neu laden – nicht bei der Erst-Installation.
-    if (hadController) {
-      try { sessionStorage.setItem('wp_updated', '1'); } catch {}
-      window.location.reload();
-    }
+    if (!hadController) return;
+    // LOOP-SICHER: höchstens EIN Reload pro Sitzung. Das Flag überlebt den
+    // Reload (sessionStorage), anders als eine JS-Variable, die sich beim
+    // Neuladen zurücksetzen würde – genau das konnte vorher eine Endlosschleife
+    // aus Neuladen auslösen (App startete nie fertig → Karte lud nie).
+    try {
+      if (sessionStorage.getItem('wp_reloaded')) return;
+      sessionStorage.setItem('wp_reloaded', '1');
+      sessionStorage.setItem('wp_updated', '1');
+    } catch { return; }
+    window.location.reload();
   });
 
   window.addEventListener('load', () => {

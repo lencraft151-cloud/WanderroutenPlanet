@@ -1,6 +1,6 @@
 // WanderPlan Service Worker – App-Shell-Cache für Offline-Start und PWA.
 
-const CACHE = 'wanderplan-v13';
+const CACHE = 'wanderplan-v14';
 
 const SHELL = [
   './',
@@ -74,35 +74,33 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // WICHTIG: Nur eigene Dateien (App-Shell) verwalten. Alles Fremde – vor allem
-  // Kartenkacheln, Vektor-Style, Sprites/Glyphs, das Höhenmodell (DEM), die
-  // CDN-Skripte und die APIs – unangetastet ans Netz durchreichen.
-  //
-  // Warum: Karten-Daten dürfen NIE aus dem Cache kommen. Auf dem iPhone ist der
-  // Cache-Speicher für Web-Apps klein; wurde er (wie bisher) mit hunderten
-  // Kacheln vollgeschrieben, lieferte der Worker veraltete/abgeschnittene Daten
-  // aus → die Karte blieb weiß und ruckelte. Durchreichen behebt beides.
+  // Alles Fremde – Kartenkacheln, Vektor-Style, DEM, CDN-Skripte, APIs –
+  // unangetastet ans Netz durchreichen (nie aus dem Cache).
   if (url.origin !== self.location.origin) return;
 
-  // Navigationsanfragen: Netzwerk zuerst, offline auf die gecachte Seite zurückfallen.
-  if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).catch(() => caches.match('index.html').then((r) => r || caches.match('./')))
-    );
-    return;
-  }
-
-  // Eigene statische Dateien: Cache zuerst, dann Netzwerk (und Kopie ablegen).
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req).then((res) => {
-        if (res && res.status === 200) {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
-        }
-        return res;
-      });
-    }).catch(() => caches.match(req))
-  );
+  // Eigene Dateien (HTML/JS/CSS): NETZWERK ZUERST. Damit kommen Updates SOFORT
+  // an, sobald man online ist – niemand bleibt mehr auf einer alten, kaputten
+  // Fassung hängen (das war der Grund, warum „Updates nicht gingen"). Der Cache
+  // dient nur noch als Offline-Reserve bzw. bei langsamer Verbindung (Timeout).
+  event.respondWith(networkFirst(req));
 });
+
+function networkFirst(req) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (r) => { if (!settled && r) { settled = true; resolve(r); } };
+    const serveCache = () => caches.match(req)
+      .then((c) => c || (req.mode === 'navigate' ? caches.match('index.html').then((i) => i || caches.match('./')) : null))
+      .then((c) => { if (c) done(c); else if (!settled) { settled = true; resolve(fetch(req).catch(() => new Response('', { status: 504 }))); } });
+    // Bei langsamer Verbindung nach 4 s aus dem Cache bedienen.
+    const timer = setTimeout(serveCache, 4000);
+    fetch(req).then((res) => {
+      clearTimeout(timer);
+      if (res && res.status === 200) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      }
+      done(res);
+    }).catch(() => { clearTimeout(timer); serveCache(); });
+  });
+}
