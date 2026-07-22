@@ -22,9 +22,16 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   (OpenStreetMap-Overpass, keyless) – antippen öffnet eine Info-Karte mit
   **„Route hierher"** (echte Wanderroute) und „Als Ziel".
 - **🧭 Abbiege-Navigation** im Navigations-Modus: Hinweise „in 150 m rechts …"
-  mit Benachrichtigungen – verfügbar in der **Android-App**.
-- **🍎 iPhone-Installation**: WanderPlan per Konfigurationsprofil (Web-Clip) als
-  Vollbild-App auf den iOS-Home-Bildschirm – siehe Download-Menü (📱) im Kopf.
+  mit System-Benachrichtigungen – in der **Android-App** und in der
+  **installierten iPhone-/PWA-App** (Benachrichtigungen laufen dort über den
+  Service Worker, wie es iOS ab 16.4 verlangt).
+- **🍎 iPhone-Installation**: WanderPlan als Vollbild-App aufs iPhone – per
+  **Installationsprofil** (der Service Worker liefert das Profil mit dem korrekten
+  Dateityp aus) oder klassisch **„Zum Home-Bildschirm"** in Safari. Siehe
+  Download-Menü (📱) im Kopf → „🍎 Download iOS".
+- **📱 Als installierte App erkannt**: läuft WanderPlan im Vollbild (Android-App,
+  iPhone-Homescreen oder PWA), blendet es das Download-Menü aus, hält das
+  Live-Standort-Teilen sofort bereit und darf Benachrichtigungen senden.
 - **🧭 Ziel-Navigation**: Kompass-Pfeil, der immer zum Ziel zeigt, plus
   Luftlinien-Entfernung und geschätzte Ankunftszeit (ETA).
 - **📍 Auf dem eigenen Punkt bleiben**: automatisches Folgen; ein

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>WanderPlan – für iPhone (iOS)</title>
-  <meta name="description" content="WanderPlan auf dem iPhone installieren – per Konfigurationsprofil oder Zum Home-Bildschirm.">
+  <title>WanderPlan – fürs iPhone (iOS)</title>
+  <meta name="description" content="WanderPlan als App aufs iPhone – per Konfigurationsprofil oder Zum Home-Bildschirm.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🥾</text></svg>">
   <meta name="theme-color" content="#2d7d46">
   <style>
@@ -34,130 +34,133 @@
     }
     .card {
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 22px;
-      padding: 32px 26px;
+      padding: 30px 24px;
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       text-align: center;
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
     }
-    .logo { font-size: 54px; line-height: 1; }
-    h1 { font-size: 1.7rem; margin: 10px 0 4px; letter-spacing: -0.02em; }
-    .sub { color: var(--muted); font-size: 0.98rem; margin-bottom: 22px; }
+    .logo { font-size: 52px; line-height: 1; }
+    h1 { font-size: 1.6rem; margin: 8px 0 4px; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); font-size: 0.96rem; margin-bottom: 18px; }
+    .warn {
+      display: flex; gap: 8px; text-align: left;
+      background: rgba(224, 138, 30, 0.14);
+      border: 1px solid rgba(224, 138, 30, 0.4);
+      border-radius: 12px; padding: 11px 13px; margin-bottom: 20px;
+      font-size: 0.86rem;
+    }
+    .warn b { color: #f0b559; }
     .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      width: 100%;
-      padding: 16px 20px;
-      font-size: 1.08rem;
-      font-weight: 700;
-      color: #fff;
-      text-decoration: none;
-      border: none;
-      border-radius: 14px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; padding: 16px 20px;
+      font-size: 1.08rem; font-weight: 700; color: #fff; text-decoration: none;
+      border: none; border-radius: 14px;
       background: linear-gradient(135deg, var(--brand), var(--brand-2));
       box-shadow: 0 10px 24px rgba(45, 125, 70, 0.4);
       transition: transform 0.12s ease, box-shadow 0.12s ease;
+      cursor: pointer;
     }
     .btn:active { transform: translateY(1px) scale(0.99); box-shadow: 0 6px 16px rgba(45, 125, 70, 0.35); }
     .btn small { font-weight: 500; opacity: 0.85; font-size: 0.78rem; }
+    .method { text-align: left; margin-top: 8px; }
+    .method h2 { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 20px 0 8px; }
+    .steps { background: rgba(0, 0, 0, 0.22); border: 1px solid var(--border); border-radius: 14px; padding: 14px 14px 14px 16px; }
+    .steps ol { margin: 0; padding-left: 20px; }
+    .steps li { margin-bottom: 7px; font-size: 0.9rem; }
+    .steps li:last-child { margin-bottom: 0; }
     .qr {
-      margin: 22px auto 6px;
-      width: 172px;
-      height: 172px;
-      background: #fff;
-      border-radius: 14px;
-      padding: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      margin: 20px auto 6px; width: 168px; height: 168px;
+      background: #fff; border-radius: 14px; padding: 10px;
+      display: flex; align-items: center; justify-content: center;
     }
     .qr svg { width: 100%; height: 100%; display: block; }
-    .qr-hint { color: var(--muted); font-size: 0.82rem; margin-bottom: 20px; }
-    .steps {
-      text-align: left;
-      background: rgba(0, 0, 0, 0.22);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px 16px 16px 18px;
-      margin-top: 6px;
-    }
-    .steps h2 { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
-    .steps ol { margin: 0; padding-left: 20px; }
-    .steps li { margin-bottom: 7px; font-size: 0.92rem; }
-    .steps li:last-child { margin-bottom: 0; }
-    .alt {
-      text-align: left;
-      margin-top: 16px;
-      font-size: 0.9rem;
-      color: var(--text);
-    }
-    .alt h3 { font-size: 0.92rem; margin-bottom: 6px; }
-    .alt p { color: var(--muted); font-size: 0.86rem; }
-    .note {
-      margin-top: 14px;
-      padding: 5px 12px;
-      font-size: 0.76rem;
-      color: var(--muted);
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      display: inline-block;
-    }
+    .qr-hint { color: var(--muted); font-size: 0.82rem; margin-bottom: 6px; }
+    .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.8rem; margin: 22px 0 6px; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .note { margin-top: 18px; font-size: 0.8rem; color: var(--muted); text-align: left; }
     .cross {
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      width: 100%; margin-top: 12px; padding: 12px 16px;
+      width: 100%; margin-top: 16px; padding: 12px 16px;
       font-size: 0.95rem; font-weight: 600; color: var(--text); text-decoration: none;
       background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); border-radius: 12px;
     }
-    .foot { margin-top: 20px; font-size: 0.84rem; color: var(--muted); }
+    .foot { margin-top: 18px; font-size: 0.84rem; color: var(--muted); }
     .foot a { color: var(--brand-2); text-decoration: none; }
   </style>
 </head>
 <body>
   <main class="card">
     <div class="logo">🍎</div>
-    <h1>WanderPlan für iPhone</h1>
-    <p class="sub">Als Vollbild-App auf den Home-Bildschirm – ohne App Store</p>
+    <h1>WanderPlan fürs iPhone</h1>
+    <p class="sub">Als App aufs iPhone – ohne App Store</p>
 
+    <div class="warn">
+      <span>⚠️</span>
+      <span>Diese Seite <b>in Safari auf dem iPhone</b> öffnen. In anderen Apps/Browsern
+        erscheint nur Text/Code statt der Installation – dann den Link in Safari öffnen (oder den QR mit der Kamera scannen).</span>
+    </div>
+
+    <div class="method">
+      <h2>1 · Als App installieren (Profil)</h2>
+    </div>
     <a id="dl" class="btn" href="WanderPlan.mobileconfig">
-      📲 Profil installieren
-      <small>(Web-Clip)</small>
+      📲 Profil laden &amp; installieren
     </a>
-
-    <div id="qr" class="qr" aria-label="QR-Code zu dieser Seite"></div>
-    <p class="qr-hint">Auf dem iPhone in <b>Safari</b> öffnen (QR scannen)</p>
-
-    <div class="steps">
-      <h2>Installation (Profil)</h2>
+    <div class="steps" style="margin-top:10px">
       <ol>
-        <li>Diese Seite in <b>Safari</b> öffnen und „Profil installieren“ tippen.</li>
-        <li>„Erlauben“ tippen – das Profil wird geladen.</li>
+        <li>Oben tippen → „<b>Erlauben</b>“ (Profil wird geladen).</li>
         <li><b>Einstellungen</b> öffnen → oben <b>Profil geladen</b> → <b>Installieren</b>.</li>
-        <li>WanderPlan-Icon erscheint auf dem Home-Bildschirm – öffnen, fertig. 🎉</li>
+        <li>Code eingeben, bestätigen – <b>WanderPlan-Icon</b> erscheint auf dem Home-Bildschirm. 🎉</li>
       </ol>
     </div>
-    <span class="note">ℹ️ Ohne Apple-Signatur zeigt iOS „Nicht verifiziert“ – die Installation funktioniert trotzdem.</span>
 
-    <div class="alt">
-      <h3>Alternative: „Zum Home-Bildschirm“</h3>
-      <p>Falls das Profil nur geladen wird: In Safari das <b>Teilen</b>-Symbol
-        (Quadrat mit Pfeil) tippen → <b>Zum Home-Bildschirm</b> → <b>Hinzufügen</b>.
-        Gleiches Ergebnis: WanderPlan als App-Icon.</p>
+    <div id="qrWrap">
+      <div id="qr" class="qr" aria-label="QR-Code zu dieser Seite"></div>
+      <p class="qr-hint">Mit der iPhone-Kamera scannen → öffnet in Safari</p>
     </div>
 
-    <a class="cross" href="../apk/">🤖 Lieber Android? Zur APK-Seite</a>
+    <div class="divider">oder</div>
 
-    <p class="foot">
-      Oder einfach <a href="../">im Browser öffnen</a>. Die App lädt stets die Live-Version.
+    <div class="method">
+      <h2>2 · Zum Home-Bildschirm (immer möglich)</h2>
+      <div class="steps">
+        <ol>
+          <li>In <b>Safari</b> <a href="../" style="color:var(--brand-2)">WanderPlan öffnen</a>.</li>
+          <li>Unten das <b>Teilen-Symbol</b> tippen (Quadrat mit Pfeil ↑).</li>
+          <li>„<b>Zum Home-Bildschirm</b>“ → „<b>Hinzufügen</b>“ – fertig.</li>
+        </ol>
+      </div>
+    </div>
+
+    <p class="note">
+      ℹ️ Beide Wege ergeben dasselbe: ein <b>Vollbild-App-Icon</b>, das WanderPlan wie eine App
+      öffnet. Ohne Apple-Signatur zeigt iOS beim Profil „Nicht verifiziert“ – die Installation
+      funktioniert trotzdem. Eine echte App-Store-App ist ohne Apple-Entwicklerkonto nicht möglich.
     </p>
+
+    <a class="cross" href="../apk/">🤖 Lieber Android? Zur APK-Seite</a>
+    <p class="foot">Oder einfach <a href="../">im Browser nutzen</a>.</p>
   </main>
 
+  <script>
+    // Service Worker registrieren, der das Profil mit dem korrekten Dateityp
+    // (application/x-apple-aspen-config) ausliefert – sonst installiert iOS es nicht.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(function () {
+        if (!navigator.serviceWorker.controller && !sessionStorage.getItem('wp_ios_sw')) {
+          navigator.serviceWorker.addEventListener('controllerchange', function () {
+            sessionStorage.setItem('wp_ios_sw', '1');
+            location.reload();
+          });
+        }
+      }).catch(function () {});
+    }
+  </script>
   <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
   <script>
     (function () {
@@ -167,7 +170,7 @@
         qr.make();
         document.getElementById('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
       } catch (e) {
-        document.getElementById('qr').style.display = 'none';
+        document.getElementById('qrWrap').style.display = 'none';
       }
     })();
   </script>

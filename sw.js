@@ -1,6 +1,6 @@
 // WanderPlan Service Worker – App-Shell-Cache für Offline-Start und PWA.
 
-const CACHE = 'wanderplan-v8';
+const CACHE = 'wanderplan-v9';
 
 const SHELL = [
   './',
@@ -42,10 +42,36 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Tippt der Nutzer auf eine Benachrichtigung → App in den Vordergrund holen
+// (oder öffnen). Nötig, damit die über den Service Worker gezeigten
+// Benachrichtigungen (u. a. auf dem iPhone) sinnvoll reagieren.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('./');
+      return undefined;
+    })
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // WICHTIG: Nur eigene Dateien (App-Shell) verwalten. Alles Fremde – vor allem
+  // Kartenkacheln, Vektor-Style, Sprites/Glyphs, das Höhenmodell (DEM), die
+  // CDN-Skripte und die APIs – unangetastet ans Netz durchreichen.
+  //
+  // Warum: Karten-Daten dürfen NIE aus dem Cache kommen. Auf dem iPhone ist der
+  // Cache-Speicher für Web-Apps klein; wurde er (wie bisher) mit hunderten
+  // Kacheln vollgeschrieben, lieferte der Worker veraltete/abgeschnittene Daten
+  // aus → die Karte blieb weiß und ruckelte. Durchreichen behebt beides.
+  if (url.origin !== self.location.origin) return;
 
   // Navigationsanfragen: Netzwerk zuerst, offline auf die gecachte Seite zurückfallen.
   if (req.mode === 'navigate') {
@@ -55,15 +81,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Kartenkacheln nicht cachen (zu viele, zu groß) – nur durchreichen.
-  if (/tile\.|\.tile\./.test(url.hostname)) return;
-
-  // Sonst: Cache zuerst, dann Netzwerk (und Kopie ablegen).
+  // Eigene statische Dateien: Cache zuerst, dann Netzwerk (und Kopie ablegen).
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
       return fetch(req).then((res) => {
-        if (res && res.status === 200 && (url.origin === self.location.origin || res.type === 'cors')) {
+        if (res && res.status === 200) {
           const copy = res.clone();
           caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
         }

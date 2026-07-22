@@ -724,7 +724,9 @@ $('btnNav').addEventListener('click', async () => {
     if (!sensors.gpsRunning()) { follow = true; hadFirstFix = false; sensors.startGPS(); setLocateButton(); }
     else { follow = true; updateRecenterChip(); } // Nachführen übernimmt das nächste GPS-Update (kein doppeltes easeTo)
     showToast('🧭 Navigations-Modus: Karte dreht sich in Blickrichtung.', { duration: 4000 });
-    if (!isNativeApp() && !navHintShown) {
+    // In der installierten App: Benachrichtigungen für Abbiege-Ansagen freigeben.
+    if (isInstalledApp()) { ensureNotifyPermission(); }
+    else if (!navHintShown) {
       navHintShown = true;
       showToast('💡 Abbiege-Ansagen („in 150 m rechts …") gibt es in der WanderPlan-App.', { duration: 6000 });
     }
@@ -772,7 +774,7 @@ function buildManeuvers(coords) {
 }
 
 function updateTurnByTurn() {
-  if (!navMode || !isNativeApp() || !currentRoute || !currentRoute.coords || !lastPosition || routeCum.length < 2) {
+  if (!navMode || !isInstalledApp() || !currentRoute || !currentRoute.coords || !lastPosition || routeCum.length < 2) {
     hideTurn();
     return;
   }
@@ -796,7 +798,7 @@ function updateTurnByTurn() {
   } else { icon = '⬆️'; title = 'Geradeaus'; body = `Noch ${fmtDistance(endDist)} bis zum Ziel.`; }
   showTurn(icon, title, body);
   // Ansage (Benachrichtigung) nur bei Wechsel, damit es nicht spammt.
-  if (title !== lastTurnKey) { lastTurnKey = title; nativeNotify(title, body); }
+  if (title !== lastTurnKey) { lastTurnKey = title; turnNotify(title, body); }
 }
 
 function showTurn(icon, title, sub) {
@@ -1459,9 +1461,45 @@ function checkArrival(id, name, lat, lon) {
 function notify(title, body) {
   showToast(`${title} ${body}`, { duration: 6000 });
   if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch {} }
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try { new Notification(title, { body, icon: 'icons/icon-192.png' }); } catch {}
-  }
+  // Native Android-App: über die Brücke als echte System-Benachrichtigung.
+  if (isNativeApp()) { nativeNotify(title, body); return; }
+  // Web/PWA (inkl. iPhone-Homescreen ab iOS 16.4): über den Service Worker.
+  showSystemNotification(title, body);
+}
+
+// System-Benachrichtigung anzeigen. Auf dem iPhone (installierte Web-App)
+// funktioniert der Notification-Konstruktor NICHT – nur der Weg über den
+// Service Worker (registration.showNotification). Deshalb bevorzugt darüber,
+// mit Fallback auf den Konstruktor (Desktop-Browser).
+function showSystemNotification(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'wanderplan' };
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.showNotification(title, opts))
+        .catch(() => { try { new Notification(title, opts); } catch {} });
+      return;
+    }
+  } catch { /* weiter zum Fallback */ }
+  try { new Notification(title, opts); } catch {}
+}
+
+// Fragt die Benachrichtigungs-Freigabe an – muss aus einer Nutzer-Aktion heraus
+// aufgerufen werden (Pflicht auf dem iPhone). Gibt true zurück, wenn erlaubt.
+async function ensureNotifyPermission() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  try { return (await Notification.requestPermission()) === 'granted'; }
+  catch { return false; }
+}
+
+// Abbiege-Ansage als System-Benachrichtigung: native App → Brücke,
+// installierte Web-App (z. B. iPhone) → Service Worker.
+function turnNotify(title, body) {
+  if (isNativeApp()) { nativeNotify(title, body); return; }
+  if (isInstalledApp()) showSystemNotification(title, body);
 }
 
 // Center-Button: Solo → geteilte Position; Gruppe → alle Teilnehmer einpassen.
@@ -1747,13 +1785,36 @@ $('appDownloadBtn').addEventListener('click', (e) => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.app-menu-wrap')) $('appMenu').classList.add('hidden');
 });
-// In der nativen App ist der Download überflüssig → ganzes Menü ausblenden.
-try {
-  if (isNativeApp()) {
-    const w = document.querySelector('.app-menu-wrap');
-    if (w) w.style.display = 'none';
-  }
-} catch { /* ignore */ }
+// Läuft WanderPlan als installierte App (Android-Wrapper, PWA im Vollbild oder
+// iOS-Webclip)? Dann ist der Download überflüssig → Menü ausblenden.
+function isInstalledApp() {
+  try {
+    if (isNativeApp()) return true;
+    if (window.navigator.standalone === true) return true; // iOS-Webclip
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return true;
+    return document.referrer.startsWith('android-app://');
+  } catch { return false; }
+}
+
+if (isInstalledApp()) {
+  document.body.classList.add('installed-app');
+  const w = document.querySelector('.app-menu-wrap');
+  if (w) w.style.display = 'none';
+}
+
+// In der installierten App das Standort-Teilen sofort einsatzbereit machen.
+// Die Standort-Freigabe wird durch die automatische Ortung ohnehin angefragt;
+// hier nur ein einmaliger Hinweis, wo das Teilen sitzt. Kein automatisches
+// Senden – das startet man bewusst per Knopf (Datenschutz).
+function primeInstalledApp() {
+  if (!isInstalledApp()) return;
+  if (localStorage.getItem('wanderplan.installedHint')) return;
+  localStorage.setItem('wanderplan.installedHint', '1');
+  setTimeout(() => {
+    showToast('✅ App bereit – unten „📡 Teilen" sendet deinen Live-Standort an Freunde.', { duration: 6500 });
+  }, 2000);
+}
 
 // ---------- Karten-Langdruck: Ort, Höhe & Koordinaten ----------
 
@@ -1993,4 +2054,5 @@ if (shareToken) {
     openHelp();
   }
   autoLocate(); // eigener blauer Punkt beim Planen
+  primeInstalledApp();
 }
