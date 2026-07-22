@@ -46,8 +46,13 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   nach Gerät. Die installierte Android-App erbt die Sprache automatisch.
 - **💬 Hover-Hinweise**: Tooltips an Kopf- und Karten-Knöpfen (Desktop-Hover bzw.
   langer Druck am Handy).
-- **🗺 Karten-Fehler-Fallback**: lädt der Kartenstil nicht, erscheint statt einer
-  weißen Fläche „Karte konnte nicht geladen werden – Neu laden".
+- **🗺 Karte mit Auffangnetz**: Lädt die 3D-Vektorkarte (OpenFreeMap) nicht –
+  Quelle langsam/aus, Netz- oder Worker-Fehler –, schaltet die App nach wenigen
+  Sekunden **automatisch auf eine zuverlässige Raster-Karte** (Esri World Topo)
+  um; Raster-Kacheln sind reine Bilder und funktionieren auch ohne Vektor-Worker.
+  Auch MapLibre selbst hat einen **CDN-Fallback** (jsDelivr, falls unpkg klemmt).
+  Rendert gar nichts, erscheint statt weißer Fläche „Karte konnte nicht geladen
+  werden – Neu laden".
 - **🧭 Ziel-Navigation**: Kompass-Pfeil, der immer zum Ziel zeigt, plus
   Luftlinien-Entfernung und geschätzte Ankunftszeit (ETA).
 - **📍 Auf dem eigenen Punkt bleiben**: automatisches Folgen; ein

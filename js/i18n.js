@@ -79,6 +79,7 @@ const DICT = {
     'mapError.title': 'Karte konnte nicht geladen werden', 'mapError.sub': 'Prüfe deine Internetverbindung und lade neu.', 'mapError.reload': '🔄 Neu laden',
     // Toasts
     'toast.updated': '✅ Auf die neue Version aktualisiert.',
+    'toast.mapFallback': '🗺 3D-Karte nicht erreichbar – einfache Karte geladen.',
     'toast.locating': 'Standort wird gesucht …',
     'toast.followPaused': 'Folgen pausiert. Tipp erneut oder „Zurück zu mir", um weiterzugehen.',
     'toast.gpsOff': 'Ortung ausgeschaltet.',
@@ -167,6 +168,7 @@ const DICT = {
     'splash.sub': 'Loading 3D map …',
     'mapError.title': 'Map could not be loaded', 'mapError.sub': 'Check your internet connection and reload.', 'mapError.reload': '🔄 Reload',
     'toast.updated': '✅ Updated to the new version.',
+    'toast.mapFallback': '🗺 3D map unavailable – loaded a simple map.',
     'toast.locating': 'Searching location …',
     'toast.followPaused': 'Following paused. Tap again or “Back to me” to continue.',
     'toast.gpsOff': 'Location turned off.',
