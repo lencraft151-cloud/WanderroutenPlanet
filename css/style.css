@@ -117,6 +117,23 @@ html, body {
 }
 .icon-btn:active { transform: scale(0.92); }
 
+/* App-Download-Menü (📱 → Android / iOS) */
+.app-menu-wrap { position: relative; display: flex; }
+.app-menu {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 6px; box-shadow: var(--shadow);
+  z-index: 1300; min-width: 190px;
+}
+.app-menu a {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-radius: 8px;
+  color: var(--text); text-decoration: none; font-size: 0.9rem; font-weight: 600;
+  white-space: nowrap;
+}
+.app-menu a:hover, .app-menu a:active { background: var(--surface-2); }
+
 /* Kompass */
 .compass {
   position: relative;
@@ -274,6 +291,12 @@ body.sheet-dragging .map-fabs { transition: none; }
 .fab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .fab.busy { opacity: 0.6; pointer-events: none; }
 
+/* Ausklappbares Werkzeug-Menü (3D / Navi / Orte) */
+.tool-cluster { display: flex; flex-direction: column; gap: 10px; }
+.tool-cluster:not(.open) { display: none; }
+.tool-cluster .tool-item { animation: toolPop 0.16s ease; }
+@keyframes toolPop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
 /* Ziel-Navigation: Pfeil + Entfernung/ETA */
 .nav-panel {
   position: absolute; top: 66px; left: 12px;
@@ -293,6 +316,19 @@ body.sheet-dragging .map-fabs { transition: none; }
 .nav-dist { font-weight: 800; font-size: 1rem; color: var(--text); font-variant-numeric: tabular-nums; }
 .nav-eta { font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-close { border: none; background: transparent; color: var(--text-dim); font-size: 0.9rem; cursor: pointer; padding: 4px 2px; flex: none; }
+
+/* Abbiege-Navigation-Banner (oben, nur in der App) */
+.nav-turn {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px;
+  background: var(--accent); color: var(--accent-ink);
+  border-radius: 16px; padding: 10px 16px; z-index: 1060;
+  box-shadow: var(--shadow); max-width: calc(100vw - 24px);
+}
+.nav-turn-icon { font-size: 1.8rem; line-height: 1; flex: none; }
+.nav-turn-text { font-weight: 800; font-size: 1.05rem; }
+.nav-turn-sub { font-size: 0.78rem; opacity: 0.9; }
+@media (min-width: 900px) { .nav-turn { left: calc(420px + (100% - 420px) / 2); } }
 
 /* Route-Extras: Schwierigkeit, Steigung, Flyover */
 .route-extras { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }

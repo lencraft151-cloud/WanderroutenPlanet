@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>WanderPlan – Android-App (APK)</title>
-  <meta name="description" content="WanderPlan als Android-App direkt herunterladen – immer die neueste Version.">
+  <title>WanderPlan – für iPhone (iOS)</title>
+  <meta name="description" content="WanderPlan auf dem iPhone installieren – per Konfigurationsprofil oder Zum Home-Bildschirm.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🥾</text></svg>">
   <meta name="theme-color" content="#2d7d46">
   <style>
@@ -91,69 +91,79 @@
     .steps ol { margin: 0; padding-left: 20px; }
     .steps li { margin-bottom: 7px; font-size: 0.92rem; }
     .steps li:last-child { margin-bottom: 0; }
-    .foot { margin-top: 22px; font-size: 0.84rem; color: var(--muted); }
-    .foot a { color: var(--brand-2); text-decoration: none; }
-    .badge {
-      display: inline-block;
+    .alt {
+      text-align: left;
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .alt h3 { font-size: 0.92rem; margin-bottom: 6px; }
+    .alt p { color: var(--muted); font-size: 0.86rem; }
+    .note {
       margin-top: 14px;
       padding: 5px 12px;
-      font-size: 0.78rem;
-      color: var(--brand-2);
-      background: rgba(63, 165, 99, 0.12);
-      border: 1px solid rgba(63, 165, 99, 0.3);
+      font-size: 0.76rem;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
       border-radius: 999px;
+      display: inline-block;
     }
     .cross {
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      width: 100%; margin-top: 14px; padding: 12px 16px;
+      width: 100%; margin-top: 12px; padding: 12px 16px;
       font-size: 0.95rem; font-weight: 600; color: var(--text); text-decoration: none;
       background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); border-radius: 12px;
     }
+    .foot { margin-top: 20px; font-size: 0.84rem; color: var(--muted); }
+    .foot a { color: var(--brand-2); text-decoration: none; }
   </style>
 </head>
 <body>
   <main class="card">
-    <div class="logo">🥾</div>
-    <h1>WanderPlan für Android</h1>
-    <p class="sub">Direkt-Download (APK) – aktualisiert sich selbst</p>
+    <div class="logo">🍎</div>
+    <h1>WanderPlan für iPhone</h1>
+    <p class="sub">Als Vollbild-App auf den Home-Bildschirm – ohne App Store</p>
 
-    <a id="dl" class="btn"
-       href="https://github.com/lencraft151-cloud/WanderroutenPlanet/releases/latest/download/WanderPlan-sideload.apk">
-      ⬇️ APK herunterladen
-      <small>(neueste Version)</small>
+    <a id="dl" class="btn" href="WanderPlan.mobileconfig">
+      📲 Profil installieren
+      <small>(Web-Clip)</small>
     </a>
 
-    <div id="qr" class="qr" aria-label="QR-Code zum Download"></div>
-    <p class="qr-hint">Mit dem Handy scannen zum Download</p>
-
-    <span class="badge">🔄 App hält sich selbst aktuell</span>
+    <div id="qr" class="qr" aria-label="QR-Code zu dieser Seite"></div>
+    <p class="qr-hint">Auf dem iPhone in <b>Safari</b> öffnen (QR scannen)</p>
 
     <div class="steps">
-      <h2>Installation</h2>
+      <h2>Installation (Profil)</h2>
       <ol>
-        <li>APK herunterladen (Button oder QR-Code).</li>
-        <li>Heruntergeladene Datei öffnen.</li>
-        <li>Falls gefragt: „Aus dieser Quelle installieren“ erlauben.</li>
-        <li>Installieren &amp; öffnen – fertig. 🎉</li>
+        <li>Diese Seite in <b>Safari</b> öffnen und „Profil installieren“ tippen.</li>
+        <li>„Erlauben“ tippen – das Profil wird geladen.</li>
+        <li><b>Einstellungen</b> öffnen → oben <b>Profil geladen</b> → <b>Installieren</b>.</li>
+        <li>WanderPlan-Icon erscheint auf dem Home-Bildschirm – öffnen, fertig. 🎉</li>
       </ol>
     </div>
+    <span class="note">ℹ️ Ohne Apple-Signatur zeigt iOS „Nicht verifiziert“ – die Installation funktioniert trotzdem.</span>
 
-    <a class="cross" href="../ios/">🍎 iPhone? Zur iOS-Seite</a>
+    <div class="alt">
+      <h3>Alternative: „Zum Home-Bildschirm“</h3>
+      <p>Falls das Profil nur geladen wird: In Safari das <b>Teilen</b>-Symbol
+        (Quadrat mit Pfeil) tippen → <b>Zum Home-Bildschirm</b> → <b>Hinzufügen</b>.
+        Gleiches Ergebnis: WanderPlan als App-Icon.</p>
+    </div>
+
+    <a class="cross" href="../apk/">🤖 Lieber Android? Zur APK-Seite</a>
 
     <p class="foot">
-      Lieber ohne Installation? →
-      <a href="../">WanderPlan im Browser öffnen</a><br>
-      Die App lädt stets die Live-Version und teilt den Standort auch im Hintergrund.
+      Oder einfach <a href="../">im Browser öffnen</a>. Die App lädt stets die Live-Version.
     </p>
   </main>
 
   <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
   <script>
     (function () {
-      var url = document.getElementById('dl').href;
       try {
         var qr = qrcode(0, 'M');
-        qr.addData(url);
+        qr.addData(location.href.replace(/#.*$/, ''));
         qr.make();
         document.getElementById('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
       } catch (e) {

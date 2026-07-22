@@ -32,9 +32,15 @@
           <i class="c-n">N</i><i class="c-e">O</i><i class="c-s">S</i><i class="c-w">W</i>
         </span>
       </button>
-      <span id="compassText" class="compass-text">–</span>
+      <span id="compassText" class="compass-text hidden">–</span>
       <button id="themeBtn" class="icon-btn" title="Hell / Dunkel umschalten" aria-label="Hell/Dunkel">🌙</button>
-      <a id="appDownloadBtn" class="icon-btn" href="apk/" title="WanderPlan als Android-App holen" aria-label="App herunterladen">📱</a>
+      <div class="app-menu-wrap">
+        <button id="appDownloadBtn" class="icon-btn" title="WanderPlan als App holen" aria-label="App herunterladen">📱</button>
+        <div id="appMenu" class="app-menu hidden">
+          <a href="apk/">🤖 Download Android</a>
+          <a href="ios/">🍎 Download iOS</a>
+        </div>
+      </div>
       <button id="helpBtn" class="icon-btn" title="Hilfe & Erklärung" aria-label="Hilfe">❓</button>
     </div>
   </header>
@@ -52,9 +58,12 @@
     </div>
 
     <div class="map-fabs">
-      <button id="btn3d" class="fab" title="2D/3D umschalten" aria-label="2D/3D umschalten">⛰</button>
-      <button id="btnNav" class="fab" title="Navigations-Modus (Karte dreht in Blickrichtung)" aria-label="Navigations-Modus">🧭</button>
-      <button id="btnPoi" class="fab" title="Interessante Orte in der Nähe (Hütten, Gipfel, Wasser …)" aria-label="Orte in der Nähe">📌</button>
+      <div id="toolCluster" class="tool-cluster">
+        <button id="btn3d" class="fab tool-item" title="2D/3D umschalten" aria-label="2D/3D umschalten">⛰</button>
+        <button id="btnNav" class="fab tool-item" title="Navigations-Modus (Karte dreht in Blickrichtung)" aria-label="Navigations-Modus">🧭</button>
+        <button id="btnPoi" class="fab tool-item" title="Interessante Orte in der Nähe (Hütten, Gipfel, Seilbahnen …)" aria-label="Orte in der Nähe">📌</button>
+      </div>
+      <button id="btnTools" class="fab" title="Werkzeuge: 3D, Navi, Orte" aria-label="Werkzeuge">🧰</button>
       <button id="btnTarget" class="fab hidden" title="Ziel & Ankunfts-Alarm setzen" aria-label="Ziel setzen">🎯</button>
       <button id="btnCenterShared" class="fab hidden" title="Auf geteilten Standort zentrieren" aria-label="Zentrieren">◎</button>
       <button id="btnLocate" class="fab" title="Meine Position – tippen zum Zentrieren, lang drücken zum Ausschalten" aria-label="Meine Position anzeigen">📍</button>
@@ -76,6 +85,15 @@
         <div class="nav-eta" id="navEta">Ziel-Navigation</div>
       </div>
       <button id="navClose" class="nav-close" title="Navigation beenden" aria-label="Navigation beenden">✕</button>
+    </div>
+
+    <!-- Abbiege-Navigation (nur in der App sichtbar) -->
+    <div id="navTurn" class="nav-turn hidden">
+      <div class="nav-turn-icon" id="navTurnIcon">⬆️</div>
+      <div class="nav-turn-body">
+        <div class="nav-turn-text" id="navTurnText">–</div>
+        <div class="nav-turn-sub" id="navTurnSub"></div>
+      </div>
     </div>
 
     <!-- Karten-Langdruck-Info -->

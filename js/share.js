@@ -173,6 +173,7 @@ export function startSharing({ name = '', onStatus = () => {} } = {}) {
     setTimeout(() => {
       if (!shareState.active) return;
       shareState.reconnecting = false;
+      if (shareState.disconnect) shareState.disconnect(); // alten Client sauber schließen
       shareState.disconnect = connectWithFallback(open, onStatus);
     }, 3000);
   };
@@ -328,6 +329,7 @@ export function startGroup({ token, name = '', share = false, onStatus = () => {
     setTimeout(() => {
       if (!groupState.active) return;
       groupState.reconnecting = false;
+      if (groupState.disconnect) groupState.disconnect(); // alten Client sauber schließen
       groupState.disconnect = connectWithFallback(open, onStatus);
     }, 3000);
   };
@@ -398,10 +400,12 @@ export function startViewing(token, { onMessage = () => {}, onStatus = () => {},
 
   const open = (client) => {
     viewState.client = client;
-    client.subscribe([topic, routeTopic], { qos: 0 }, (err) => {
+    // Zwei separate Subscribes (robuster über verschiedene Broker als ein Array).
+    client.subscribe(topic, { qos: 0 }, (err) => {
       if (err) { onStatus('error', 'Konnte nicht abonnieren.'); return; }
       onStatus('waiting', 'Warte auf Standort …');
     });
+    client.subscribe(routeTopic, { qos: 0 });
     client.on('message', (t, payload) => {
       const text = payload.toString();
       if (t === routeTopic) {

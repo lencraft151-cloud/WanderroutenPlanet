@@ -13,22 +13,27 @@ const ENDPOINTS = [
 function classify(tags) {
   if (!tags) return null;
   const t = tags;
-  if (t.tourism === 'alpine_hut' || t.tourism === 'wilderness_hut') return { cat: 'hut', emoji: '🛖', label: 'Hütte' };
+  if (t.aerialway) return { cat: 'lift', emoji: '🚠', label: 'Seilbahn/Lift' };
+  if (t.tourism === 'alpine_hut' || t.tourism === 'wilderness_hut') return { cat: 'hut', emoji: '🛖', label: 'Alm-/Berghütte' };
   if (t.amenity === 'shelter' || t.shelter_type) return { cat: 'shelter', emoji: '⛺', label: 'Schutzhütte' };
+  if (t.mountain_pass === 'yes' || t.natural === 'saddle') return { cat: 'pass', emoji: '⛰️', label: 'Pass/Sattel' };
   if (t.natural === 'peak') return { cat: 'peak', emoji: '⛰️', label: 'Gipfel' };
   if (t.tourism === 'viewpoint') return { cat: 'viewpoint', emoji: '🔭', label: 'Aussicht' };
   if (t.natural === 'spring' || t.amenity === 'drinking_water') return { cat: 'water', emoji: '💧', label: 'Wasser' };
+  if (t.amenity === 'restaurant' || t.amenity === 'cafe') return { cat: 'food', emoji: '🍽️', label: 'Einkehr' };
   if (t.amenity === 'bench') return { cat: 'bench', emoji: '🪑', label: 'Bank' };
   return null;
 }
 
 function buildQuery(lat, lon, radiusM) {
   const a = `(around:${Math.round(radiusM)},${lat.toFixed(5)},${lon.toFixed(5)})`;
-  return `[out:json][timeout:20];(` +
+  return `[out:json][timeout:25];(` +
     `node["tourism"~"^(alpine_hut|wilderness_hut|viewpoint)$"]${a};` +
-    `node["natural"~"^(peak|spring)$"]${a};` +
-    `node["amenity"~"^(drinking_water|shelter|bench)$"]${a};` +
-    `);out body ${120};`;
+    `node["natural"~"^(peak|spring|saddle)$"]${a};` +
+    `node["mountain_pass"="yes"]${a};` +
+    `node["amenity"~"^(drinking_water|shelter|bench|restaurant|cafe)$"]${a};` +
+    `node["aerialway"="station"]${a};` +
+    `);out body ${150};`;
 }
 
 // Liefert bis `limit` POIs, nach Entfernung zur Mitte sortiert.

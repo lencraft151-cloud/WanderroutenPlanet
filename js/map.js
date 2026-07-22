@@ -345,8 +345,14 @@ export function setView(lat, lng, zoom) {
 export function panTo(lat, lng, zoom) { setView(lat, lng, zoom); }
 
 // Sanftes Nachführen beim Folgen (kurze Animation, optional Blickrichtung
-// für den Navigations-Modus – Heading-Up).
+// für den Navigations-Modus – Heading-Up). Läuft bereits eine Kamerafahrt,
+// wird direkt gesprungen (jumpTo) statt eine zweite easeTo zu stapeln – das
+// verhindert eine Re-Entrancy im MapLibre-Renderloop.
 export function followTo(lat, lng, { zoom, bearing } = {}) {
+  // Läuft bereits eine Kamerafahrt, dieses Update überspringen – das nächste
+  // GPS-Update führt ohnehin nach. Verhindert überlappende easeTo-Aufrufe, die
+  // in MapLibre eine Render-Re-Entrancy auslösen könnten.
+  if (map.isMoving && map.isMoving()) return;
   map.easeTo({
     center: [lng, lat],
     zoom: zoom != null ? zoom : map.getZoom(),
