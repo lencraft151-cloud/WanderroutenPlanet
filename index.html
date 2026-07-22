@@ -34,7 +34,8 @@
       </button>
       <span id="compassText" class="compass-text hidden">–</span>
       <button id="themeBtn" class="icon-btn" title="Hell / Dunkel umschalten" aria-label="Hell/Dunkel">🌙</button>
-      <button id="btnSos" class="icon-btn sos-btn" title="SOS / Notfall – Standort, Koordinaten & Notruf" aria-label="SOS / Notfall">🆘</button>
+      <button id="langBtn" class="icon-btn" title="Sprache Deutsch/Englisch" aria-label="Sprache" data-i18n-title="a11y.lang" data-i18n-aria="a11y.lang">🌐</button>
+      <button id="btnSos" class="icon-btn sos-btn" title="SOS / Notfall – Standort, Koordinaten & Notruf" aria-label="SOS / Notfall" data-i18n-aria="a11y.sos">🆘</button>
       <div class="app-menu-wrap">
         <button id="appDownloadBtn" class="icon-btn" title="WanderPlan als App holen" aria-label="App herunterladen">📱</button>
         <div id="appMenu" class="app-menu hidden">
@@ -51,7 +52,7 @@
 
     <div class="search-wrap">
       <div class="search-box">
-        <input id="searchInput" type="search" placeholder="Ort, Berg oder Hütte suchen …" autocomplete="off" enterkeyhint="search">
+        <input id="searchInput" type="search" placeholder="Ort, Berg oder Hütte suchen …" data-i18n-ph="search.ph" autocomplete="off" enterkeyhint="search">
         <button id="searchClear" class="search-clear hidden" title="Leeren" aria-label="Leeren">✕</button>
         <button id="searchBtn" class="search-btn" title="Suchen" aria-label="Suchen">🔎</button>
       </div>
@@ -113,17 +114,17 @@
     <!-- SOS / Notfall -->
     <div id="sosCard" class="sos-card hidden">
       <button id="sosClose" class="pin-close" aria-label="Schließen">✕</button>
-      <div class="sos-head">🆘 Notfall / Standort</div>
-      <div class="sos-coords" id="sosCoords">Standort wird gesucht …</div>
+      <div class="sos-head" data-i18n="sos.head">🆘 Notfall / Standort</div>
+      <div class="sos-coords" id="sosCoords" data-i18n="sos.searching">Standort wird gesucht …</div>
       <div class="sos-meta" id="sosMeta"></div>
       <div class="btn-row">
-        <button id="sosShare" class="btn btn-primary btn-mini">📤 Standort senden</button>
-        <button id="sosCopy" class="btn btn-mini">📋 Kopieren</button>
+        <button id="sosShare" class="btn btn-primary btn-mini" data-i18n="sos.share">📤 Standort senden</button>
+        <button id="sosCopy" class="btn btn-mini" data-i18n="sos.copy">📋 Kopieren</button>
       </div>
       <div class="btn-row" style="margin-bottom:0">
-        <a id="sosCall" class="btn btn-danger btn-mini" href="tel:112">📞 Notruf 112</a>
+        <a id="sosCall" class="btn btn-danger btn-mini" href="tel:112" data-i18n="sos.call">📞 Notruf 112</a>
       </div>
-      <p class="sos-note">Im Notfall zuerst 112 anrufen. Sende deinen Standort an Begleiter oder die Rettung.</p>
+      <p class="sos-note" data-i18n="sos.note">Im Notfall zuerst 112 anrufen. Sende deinen Standort an Begleiter oder die Rettung.</p>
     </div>
 
     <!-- Betrachter-Karte (Solo-Teil-Link) -->
@@ -152,35 +153,35 @@
 
       <div class="action-bar">
         <button id="actLocate" class="act" aria-label="Meinen Standort anzeigen">
-          <span class="act-ic">📍</span><span class="act-label">Standort</span>
+          <span class="act-ic">📍</span><span class="act-label" data-i18n="act.locate">Standort</span>
         </button>
         <button id="actRecord" class="act" aria-label="Wanderung aufzeichnen">
-          <span class="act-ic">⏺</span><span class="act-label">Aufzeichnen</span>
+          <span class="act-ic">⏺</span><span class="act-label" data-i18n="act.record">Aufzeichnen</span>
         </button>
         <button id="actShare" class="act" aria-label="Live-Standort teilen">
-          <span class="act-ic">📡</span><span class="act-label">Teilen</span>
+          <span class="act-ic">📡</span><span class="act-label" data-i18n="act.share">Teilen</span>
         </button>
       </div>
 
       <nav class="tabs">
-        <button class="tab active" data-tab="route">🗺 Route</button>
-        <button class="tab" data-tab="tracking">⏱ Tracking</button>
-        <button class="tab" data-tab="share">📡 Teilen</button>
-        <button class="tab" data-tab="saved">📁 Gespeichert</button>
+        <button class="tab active" data-tab="route" data-i18n="tab.route">🗺 Route</button>
+        <button class="tab" data-tab="tracking" data-i18n="tab.tracking">⏱ Tracking</button>
+        <button class="tab" data-tab="share" data-i18n="tab.share">📡 Teilen</button>
+        <button class="tab" data-tab="saved" data-i18n="tab.saved">📁 Gespeichert</button>
       </nav>
 
       <div class="tab-content" id="tab-route">
-        <p class="hint">👉 Tippe auf die Karte, um <b>Wegpunkte</b> zu setzen. Die Route wird automatisch über Wanderwege berechnet. Marker <b>ziehen</b> = verschieben, <b>antippen</b> = entfernen. Zwei Finger = Karte <b>neigen/drehen</b> (3D).</p>
+        <p class="hint" data-i18n-html="route.hint">👉 Tippe auf die Karte, um <b>Wegpunkte</b> zu setzen. Die Route wird automatisch über Wanderwege berechnet. Marker <b>ziehen</b> = verschieben, <b>antippen</b> = entfernen. Zwei Finger = Karte <b>neigen/drehen</b> (3D).</p>
         <div class="field-row">
-          <label for="profileSelect">Routing-Profil</label>
+          <label for="profileSelect" data-i18n="route.profile">Routing-Profil</label>
           <select id="profileSelect">
-            <option value="hiking-mountain" selected>Wandern (Gebirge)</option>
-            <option value="trekking">Trekking / Wege</option>
-            <option value="shortest">Kürzester Weg</option>
+            <option value="hiking-mountain" selected data-i18n="profile.hiking">Wandern (Gebirge)</option>
+            <option value="trekking" data-i18n="profile.trekking">Trekking / Wege</option>
+            <option value="shortest" data-i18n="profile.shortest">Kürzester Weg</option>
           </select>
         </div>
         <div class="subcard">
-          <h4>🤖 Automatisch planen</h4>
+          <h4 data-i18n="route.autoplan">🤖 Automatisch planen</h4>
           <div class="btn-row">
             <button id="btnAutoTarget" class="btn">🎯 Route zum Ziel</button>
             <button id="btnStartHere" class="btn" title="Meinen aktuellen Standort als Startpunkt setzen">📍 Start = ich</button>
@@ -344,10 +345,14 @@
     <div class="splash-bar"></div>
   </div>
 
-  <div id="updateBanner" class="update-banner hidden" role="status">
-    <span>🆕 Neue Version verfügbar.</span>
-    <button id="updateReload" class="ub-btn">Aktualisieren</button>
-    <button id="updateDismiss" class="ub-x" aria-label="Später">✕</button>
+  <!-- Fallback, falls die Karte nicht lädt (statt weißer Fläche) -->
+  <div id="mapError" class="map-error hidden">
+    <div class="map-error-box">
+      <div class="me-icon">🗺️</div>
+      <div class="me-title" data-i18n="mapError.title">Karte konnte nicht geladen werden</div>
+      <div class="me-sub" data-i18n="mapError.sub">Prüfe deine Internetverbindung und lade neu.</div>
+      <button id="mapErrorReload" class="me-btn" data-i18n="mapError.reload">🔄 Neu laden</button>
+    </div>
   </div>
 
   <div id="toast" class="toast hidden" role="status"></div>

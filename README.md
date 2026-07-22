@@ -38,9 +38,16 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **📱 Als installierte App erkannt**: läuft WanderPlan im Vollbild (Android-App,
   iPhone-Homescreen oder PWA), blendet es das Download-Menü aus, hält das
   Live-Standort-Teilen sofort bereit und darf Benachrichtigungen senden.
-- **🆕 Update-Hinweis**: erscheint eine neue Version, zeigt die App ein Banner
-  „Neue Version verfügbar" – ein Tipp auf **Aktualisieren** lädt sie sofort neu
-  (Service-Worker-Update, alter Cache wird ersetzt).
+- **🆕 Automatisches Update**: neue Versionen aktivieren sich beim nächsten
+  Öffnen von selbst (Service-Worker mit `skipWaiting`), die App lädt einmal
+  frisch nach und zeigt kurz „✅ aktualisiert" – so bleibt niemand auf einer
+  alten, kaputten Fassung hängen.
+- **🌐 Zweisprachig (DE/EN)**: Umschalter im Kopf; Sprache wird gemerkt, Standard
+  nach Gerät. Die installierte Android-App erbt die Sprache automatisch.
+- **💬 Hover-Hinweise**: Tooltips an Kopf- und Karten-Knöpfen (Desktop-Hover bzw.
+  langer Druck am Handy).
+- **🗺 Karten-Fehler-Fallback**: lädt der Kartenstil nicht, erscheint statt einer
+  weißen Fläche „Karte konnte nicht geladen werden – Neu laden".
 - **🧭 Ziel-Navigation**: Kompass-Pfeil, der immer zum Ziel zeigt, plus
   Luftlinien-Entfernung und geschätzte Ankunftszeit (ETA).
 - **📍 Auf dem eigenen Punkt bleiben**: automatisches Folgen; ein

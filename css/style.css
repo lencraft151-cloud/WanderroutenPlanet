@@ -297,6 +297,16 @@ body.sheet-dragging .map-fabs { transition: none; }
 .tool-cluster .tool-item { animation: toolPop 0.16s ease; }
 @keyframes toolPop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
+/* Handy: die MapLibre-Zoom/Neigen-Steuerung ausblenden – sie überlappte Suche
+   und Werkzeuge und ist per Zwei-Finger-Geste + ⛰-Knopf überflüssig. Am Desktop
+   bleibt sie. Zugleich die FABs etwas kompakter, damit der ausgeklappte Cluster
+   nicht über den Rand wächst. */
+@media (max-width: 899px) {
+  .maplibregl-ctrl-top-right { display: none !important; }
+  .map-fabs .fab { width: 44px; height: 44px; font-size: 1.2rem; }
+  .tool-cluster { gap: 8px; }
+}
+
 /* Ziel-Navigation: Pfeil + Entfernung/ETA */
 .nav-panel {
   position: absolute; top: 66px; left: 12px;
@@ -608,22 +618,32 @@ select#loopKm, .field-row select {
 }
 .toast.error { background: var(--danger); color: #fff; }
 
-/* „Neue Version"-Banner (PWA-Update) */
-.update-banner {
-  position: fixed; left: 50%; transform: translateX(-50%);
-  top: calc(var(--topbar-h) + env(safe-area-inset-top) + 8px);
-  display: flex; align-items: center; gap: 10px;
-  background: var(--accent); color: var(--accent-ink);
-  padding: 9px 10px 9px 14px; border-radius: 12px;
-  box-shadow: var(--shadow); z-index: 2600;
-  font-size: 0.86rem; font-weight: 600; max-width: calc(100vw - 24px);
+/* Karten-Fehler-Overlay (falls der Kartenstil nicht lädt) */
+.map-error {
+  position: absolute; inset: 0; z-index: 900;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2); padding: 24px;
 }
-.update-banner .ub-btn {
-  border: none; background: rgba(255, 255, 255, 0.22); color: var(--accent-ink);
-  font-weight: 800; padding: 6px 12px; border-radius: 9px; cursor: pointer; white-space: nowrap;
+.map-error-box { text-align: center; max-width: 320px; }
+.map-error .me-icon { font-size: 2.6rem; }
+.map-error .me-title { font-weight: 800; font-size: 1.05rem; margin: 10px 0 4px; }
+.map-error .me-sub { font-size: 0.88rem; color: var(--text-dim); margin-bottom: 16px; }
+.map-error .me-btn {
+  border: none; background: var(--accent); color: var(--accent-ink);
+  font-weight: 700; font-size: 0.95rem; padding: 12px 22px; border-radius: 12px; cursor: pointer;
 }
-.update-banner .ub-btn:active { transform: scale(0.97); }
-.update-banner .ub-x { border: none; background: transparent; color: var(--accent-ink); cursor: pointer; font-size: 0.95rem; padding: 2px 4px; opacity: 0.85; }
+.map-error .me-btn:active { transform: scale(0.98); }
+
+/* Eigener Tooltip (Hover am Desktop, Long-Press am Handy) */
+#tooltip {
+  position: fixed; z-index: 3200; pointer-events: none;
+  background: color-mix(in srgb, var(--text) 92%, #000); color: var(--bg);
+  padding: 6px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+  max-width: 240px; box-shadow: var(--shadow-sm);
+  opacity: 0; transform: translateY(2px); transition: opacity .12s ease, transform .12s ease;
+  white-space: normal; line-height: 1.3;
+}
+#tooltip.show { opacity: 1; transform: translateY(0); }
 
 /* ===================== schmale Handys ===================== */
 /* Kopfleiste auf dem Handy entschlacken: die drehende Kompassrose zeigt die
