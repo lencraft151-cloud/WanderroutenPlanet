@@ -44,10 +44,11 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **📱 Als installierte App erkannt**: läuft WanderPlan im Vollbild (Android-App,
   iPhone-Homescreen oder PWA), blendet es das Download-Menü aus, hält das
   Live-Standort-Teilen sofort bereit und darf Benachrichtigungen senden.
-- **🆕 Automatisches Update**: neue Versionen aktivieren sich beim nächsten
-  Öffnen von selbst (Service-Worker mit `skipWaiting`), die App lädt einmal
-  frisch nach und zeigt kurz „✅ aktualisiert" – so bleibt niemand auf einer
-  alten, kaputten Fassung hängen.
+- **🆕 Immer aktuell (Netzwerk zuerst)**: Der Service Worker holt die App-Dateien
+  **online immer frisch vom Server** (Netzwerk zuerst, Cache nur als Offline-
+  Reserve). So kommt jede neue Version sofort an – niemand bleibt mehr auf einer
+  alten, gecachten Fassung hängen. Der Reload beim Update ist **schleifensicher**
+  (höchstens einmal pro Sitzung).
 - **🌐 Zweisprachig (DE/EN)**: Umschalter im Kopf; Sprache wird gemerkt, Standard
   nach Gerät. Die installierte Android-App erbt die Sprache automatisch.
 - **💬 Hover-Hinweise**: Tooltips an Kopf- und Karten-Knöpfen (Desktop-Hover bzw.
