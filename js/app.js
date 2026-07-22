@@ -14,6 +14,7 @@ import { fetchWeather, weatherInfo } from './weather.js';
 import { fetchPois } from './poi.js';
 import { computeDifficulty, buildGradeSegments } from './difficulty.js';
 import { buildRouteLink, decodeRoute } from './routecodec.js';
+import { t, setLang, getLang, applyStatic, toggleLang } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1257,9 +1258,9 @@ $('btnVoice').addEventListener('click', () => {
   if (on) {
     // Direkt aus der Nutzer-Aktion sprechen – schaltet die Stimme auf iOS frei.
     speakNav('Sprach-Navigation aktiviert.');
-    showToast('🔊 Sprach-Navigation an – Abbiegehinweise werden vorgelesen.');
+    showToast(t('toast.voiceOn'));
   } else {
-    showToast('Sprach-Navigation aus.');
+    showToast(t('toast.voiceOff'));
   }
 });
 
@@ -1275,7 +1276,7 @@ function syncMapStyleBtn() {
 $('btnMapStyle').addEventListener('click', () => {
   const base = mapView.cycleBaseStyle();
   syncMapStyleBtn();
-  showToast(`🗺 Kartenstil: ${mapView.getBaseLabel(base)}`);
+  showToast(t('toast.style', { name: mapView.getBaseLabel(base) }));
 });
 syncMapStyleBtn();
 
@@ -1318,17 +1319,17 @@ $('btnSos').addEventListener('click', openSos);
 $('sosClose').addEventListener('click', () => $('sosCard').classList.add('hidden'));
 $('sosShare').addEventListener('click', async () => {
   const p = sosPayload();
-  if (!p) { showToast('Noch kein Standort – bitte Ortung zulassen.', { error: true }); return; }
+  if (!p) { showToast(t('toast.sosNoPos'), { error: true }); return; }
   if (navigator.share) {
     try { await navigator.share({ title: 'Notfall – mein Standort', text: p.text, url: p.gmaps }); return; } catch { /* abgebrochen */ }
   }
-  try { await navigator.clipboard.writeText(p.text); showToast('Standort kopiert – jetzt einfügen & senden.'); }
+  try { await navigator.clipboard.writeText(p.text); showToast(t('toast.sosShared')); }
   catch { window.prompt('Standort kopieren:', p.text); }
 });
 $('sosCopy').addEventListener('click', async () => {
   const p = sosPayload();
-  if (!p) { showToast('Noch kein Standort – bitte Ortung zulassen.', { error: true }); return; }
-  try { await navigator.clipboard.writeText(`${fmtLatLon(p.latitude, p.longitude)} · ${p.gmaps}`); showToast('Koordinaten kopiert.'); }
+  if (!p) { showToast(t('toast.sosNoPos'), { error: true }); return; }
+  try { await navigator.clipboard.writeText(`${fmtLatLon(p.latitude, p.longitude)} · ${p.gmaps}`); showToast(t('toast.coordsCopied')); }
   catch { window.prompt('Koordinaten kopieren:', fmtLatLon(p.latitude, p.longitude)); }
 });
 
@@ -1643,6 +1644,58 @@ $('themeBtn').addEventListener('click', () => {
   applyTheme(next);
   showToast(next === 'dark' ? '🌙 Dunkler Modus' : '☀️ Heller Modus');
 });
+
+// ---------- Sprache (DE/EN) ----------
+document.documentElement.setAttribute('lang', getLang());
+applyStatic();
+$('langBtn').addEventListener('click', () => {
+  const l = toggleLang();
+  showToast(l === 'en' ? '🌐 English' : '🌐 Deutsch');
+});
+
+// ---------- Hover-Tooltips (Desktop) / Long-Press (Touch) ----------
+(function initTooltips() {
+  const tip = document.createElement('div');
+  tip.id = 'tooltip';
+  document.body.appendChild(tip);
+  let hideTimer = null;
+  function textFor(el) {
+    const node = el.closest('[data-tip], [title], [aria-label]');
+    if (!node) return null;
+    return node.getAttribute('data-tip') || node.getAttribute('title') || node.getAttribute('aria-label');
+  }
+  function showTip(target) {
+    const txt = textFor(target);
+    if (!txt) return;
+    tip.textContent = txt;
+    const r = target.getBoundingClientRect();
+    tip.style.left = Math.min(Math.max(r.left + r.width / 2, 60), window.innerWidth - 60) + 'px';
+    tip.style.top = (r.bottom + 8) + 'px';
+    tip.style.transform = 'translate(-50%, 0)';
+    tip.classList.add('show');
+    clearTimeout(hideTimer);
+  }
+  function hideTip() { tip.classList.remove('show'); }
+  // Nur Steuer-Elemente mit Titel/Tip: Kopf-Knöpfe + Karten-FABs.
+  const SEL = '.icon-btn, .fab, .compass';
+  document.addEventListener('mouseover', (e) => { const el = e.target.closest(SEL); if (el) showTip(el); });
+  document.addEventListener('mouseout', (e) => { if (e.target.closest(SEL)) hideTip(); });
+  document.addEventListener('mousedown', hideTip, true);
+  // Touch: langer Druck zeigt den Hinweis kurz.
+  document.addEventListener('touchstart', (e) => {
+    const el = e.target.closest(SEL);
+    if (!el) return;
+    hideTimer = setTimeout(() => { showTip(el); setTimeout(hideTip, 1600); }, 500);
+  }, { passive: true });
+  document.addEventListener('touchend', () => clearTimeout(hideTimer));
+  document.addEventListener('touchmove', () => clearTimeout(hideTimer));
+})();
+
+// ---------- Karten-Fehler-Fallback ----------
+let mapIsReady = false;
+mapView.onReady(() => { mapIsReady = true; const me = $('mapError'); if (me) me.classList.add('hidden'); });
+$('mapErrorReload').addEventListener('click', () => window.location.reload());
+setTimeout(() => { if (!mapIsReady) $('mapError').classList.remove('hidden'); }, 12000);
 
 // ---------- Verbindungslinie (Luftlinie ich ↔ verfolgte Person) ----------
 
@@ -2102,46 +2155,36 @@ $('shareName').addEventListener('change', () => {
   mapView.setPositionLabel(getOwnName());
 });
 
-// ---------- Service Worker (PWA) + Update-Hinweis ----------
-
-// Zeigt das „Neue Version"-Banner und aktualisiert auf Knopfdruck.
-function showUpdateBanner(reg) {
-  const el = $('updateBanner');
-  if (!el || el.dataset.shown === '1') return;
-  el.dataset.shown = '1';
-  el.classList.remove('hidden');
-  $('updateReload').onclick = () => {
-    el.classList.add('hidden');
-    if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
-    else window.location.reload();
-  };
-  $('updateDismiss').onclick = () => el.classList.add('hidden');
-}
-
+// ---------- Service Worker (PWA) + automatisches Update ----------
+// Neue Versionen aktivieren sich automatisch (skipWaiting im SW). Sobald der neue
+// Worker übernimmt, lädt die Seite EINMALIG frisch nach – so sind App und Karte
+// immer aktuell und niemand bleibt auf einer alten, kaputten Fassung hängen.
 if ('serviceWorker' in navigator && window.isSecureContext) {
+  // Kurzer Hinweis nach erfolgtem Update (über den Reload hinweg gemerkt).
+  try {
+    if (sessionStorage.getItem('wp_updated')) {
+      sessionStorage.removeItem('wp_updated');
+      setTimeout(() => showToast(t('toast.updated')), 800);
+    }
+  } catch { /* egal */ }
+
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    // Nur bei einem echten Update neu laden – nicht bei der Erst-Installation.
+    if (hadController) {
+      try { sessionStorage.setItem('wp_updated', '1'); } catch {}
+      window.location.reload();
+    }
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((reg) => {
-      // Wartet bereits ein neuer Worker (Update beim Öffnen schon fertig)?
-      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg);
-      // Neuer Worker wird gefunden → nach Installation Update anbieten.
-      reg.addEventListener('updatefound', () => {
-        const nw = reg.installing;
-        if (!nw) return;
-        nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner(reg);
-        });
-      });
-      // Gelegentlich aktiv auf Updates prüfen (App bleibt lange offen).
+      // Bleibt die App lange offen: ab und zu auf Updates prüfen.
       setInterval(() => { reg.update().catch(() => {}); }, 60 * 60 * 1000);
     }).catch(() => { /* offline-Funktion optional */ });
-
-    // Sobald der neue Worker übernimmt: einmalig neu laden → frische Version.
-    let reloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloaded) return;
-      reloaded = true;
-      window.location.reload();
-    });
   });
 }
 

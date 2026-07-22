@@ -1,6 +1,6 @@
 // WanderPlan Service Worker – App-Shell-Cache für Offline-Start und PWA.
 
-const CACHE = 'wanderplan-v10';
+const CACHE = 'wanderplan-v11';
 
 const SHELL = [
   './',
@@ -20,18 +20,21 @@ const SHELL = [
   'js/poi.js',
   'js/difficulty.js',
   'js/routecodec.js',
+  'js/i18n.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
-  // Kein automatisches skipWaiting: Der neue Worker wartet, bis die Seite das
-  // Update bestätigt (Banner „Neue Version") und SKIP_WAITING sendet. So bekommt
-  // der Nutzer den Hinweis, dass aktualisiert werden muss.
+  // Sofort aktivieren (skipWaiting): So bekommen ALLE Nutzer einen Fix bzw. neue
+  // Version automatisch beim nächsten Öffnen – niemand bleibt auf einer alten,
+  // kaputten (gecachten) Fassung hängen. Die Seite zeigt danach kurz einen
+  // Hinweis „aktualisiert" und lädt sich einmalig frisch.
   event.waitUntil(
     caches.open(CACHE)
       .then((cache) => cache.addAll(SHELL))
+      .then(() => self.skipWaiting())
       .catch(() => { /* einzelne fehlende Datei nicht fatal */ })
   );
 });
