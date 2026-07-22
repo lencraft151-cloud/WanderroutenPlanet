@@ -25,6 +25,12 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   mit System-Benachrichtigungen – in der **Android-App** und in der
   **installierten iPhone-/PWA-App** (Benachrichtigungen laufen dort über den
   Service Worker, wie es iOS ab 16.4 verlangt).
+- **🔊 Sprach-Navigation**: Abbiegehinweise & Warnungen werden **laut vorgelesen**
+  (Web Speech API, deutsch, offline, ohne Key) – per 🔊-Knopf im Werkzeug-Menü.
+- **🗺 Kartenstil-Umschalter**: neben der **3D-Karte** auch **Topo-Wanderkarte**
+  (OpenTopoMap) und **Satellitenbild** (Esri) – keyless, per 🗺-Knopf durchschalten.
+- **🆘 SOS-/Notfallmodus**: zeigt deine **Koordinaten** groß mit **Höhe** und Ort,
+  **teilt den Standort** (Karten-Link) und bietet **Notruf 112** – ein Tipp aufs 🆘.
 - **🍎 iPhone-Installation**: WanderPlan als Vollbild-App aufs iPhone – per
   **Installationsprofil** (der Service Worker liefert das Profil mit dem korrekten
   Dateityp aus) oder klassisch **„Zum Home-Bildschirm"** in Safari. Siehe
@@ -32,6 +38,9 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **📱 Als installierte App erkannt**: läuft WanderPlan im Vollbild (Android-App,
   iPhone-Homescreen oder PWA), blendet es das Download-Menü aus, hält das
   Live-Standort-Teilen sofort bereit und darf Benachrichtigungen senden.
+- **🆕 Update-Hinweis**: erscheint eine neue Version, zeigt die App ein Banner
+  „Neue Version verfügbar" – ein Tipp auf **Aktualisieren** lädt sie sofort neu
+  (Service-Worker-Update, alter Cache wird ersetzt).
 - **🧭 Ziel-Navigation**: Kompass-Pfeil, der immer zum Ziel zeigt, plus
   Luftlinien-Entfernung und geschätzte Ankunftszeit (ETA).
 - **📍 Auf dem eigenen Punkt bleiben**: automatisches Folgen; ein

@@ -34,6 +34,7 @@
       </button>
       <span id="compassText" class="compass-text hidden">–</span>
       <button id="themeBtn" class="icon-btn" title="Hell / Dunkel umschalten" aria-label="Hell/Dunkel">🌙</button>
+      <button id="btnSos" class="icon-btn sos-btn" title="SOS / Notfall – Standort, Koordinaten & Notruf" aria-label="SOS / Notfall">🆘</button>
       <div class="app-menu-wrap">
         <button id="appDownloadBtn" class="icon-btn" title="WanderPlan als App holen" aria-label="App herunterladen">📱</button>
         <div id="appMenu" class="app-menu hidden">
@@ -61,6 +62,8 @@
       <div id="toolCluster" class="tool-cluster">
         <button id="btn3d" class="fab tool-item" title="2D/3D umschalten" aria-label="2D/3D umschalten">⛰</button>
         <button id="btnNav" class="fab tool-item" title="Navigations-Modus (Karte dreht in Blickrichtung)" aria-label="Navigations-Modus">🧭</button>
+        <button id="btnVoice" class="fab tool-item" title="Sprach-Navigation: Abbiegehinweise vorlesen" aria-label="Sprach-Navigation">🔊</button>
+        <button id="btnMapStyle" class="fab tool-item" title="Kartenstil: Standard / Topo-Wanderkarte / Satellit" aria-label="Kartenstil umschalten">🗺</button>
         <button id="btnPoi" class="fab tool-item" title="Interessante Orte in der Nähe (Hütten, Gipfel, Seilbahnen …)" aria-label="Orte in der Nähe">📌</button>
       </div>
       <button id="btnTools" class="fab" title="Werkzeuge: 3D, Navi, Orte" aria-label="Werkzeuge">🧰</button>
@@ -105,6 +108,22 @@
         <button id="pinRoute" class="btn btn-mini">🧭 Route hierher</button>
         <button id="pinTarget" class="btn btn-mini">🎯 Als Ziel</button>
       </div>
+    </div>
+
+    <!-- SOS / Notfall -->
+    <div id="sosCard" class="sos-card hidden">
+      <button id="sosClose" class="pin-close" aria-label="Schließen">✕</button>
+      <div class="sos-head">🆘 Notfall / Standort</div>
+      <div class="sos-coords" id="sosCoords">Standort wird gesucht …</div>
+      <div class="sos-meta" id="sosMeta"></div>
+      <div class="btn-row">
+        <button id="sosShare" class="btn btn-primary btn-mini">📤 Standort senden</button>
+        <button id="sosCopy" class="btn btn-mini">📋 Kopieren</button>
+      </div>
+      <div class="btn-row" style="margin-bottom:0">
+        <a id="sosCall" class="btn btn-danger btn-mini" href="tel:112">📞 Notruf 112</a>
+      </div>
+      <p class="sos-note">Im Notfall zuerst 112 anrufen. Sende deinen Standort an Begleiter oder die Rettung.</p>
     </div>
 
     <!-- Betrachter-Karte (Solo-Teil-Link) -->
@@ -323,6 +342,12 @@
     <div class="splash-name">WanderPlan</div>
     <div class="splash-sub">3D-Karte wird geladen …</div>
     <div class="splash-bar"></div>
+  </div>
+
+  <div id="updateBanner" class="update-banner hidden" role="status">
+    <span>🆕 Neue Version verfügbar.</span>
+    <button id="updateReload" class="ub-btn">Aktualisieren</button>
+    <button id="updateDismiss" class="ub-x" aria-label="Später">✕</button>
   </div>
 
   <div id="toast" class="toast hidden" role="status"></div>

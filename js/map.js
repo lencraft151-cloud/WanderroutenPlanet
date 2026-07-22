@@ -17,14 +17,42 @@ let currentTheme = 'light';
 let buildings3dOn = true;
 let gradeVisible = false;
 
-// Handy/Touch erkennen – dort sparsamer rendern, damit die Karte flüssig bleibt.
-const IS_MOBILE = (typeof window !== 'undefined')
-  && ((window.matchMedia && window.matchMedia('(max-width: 899px)').matches)
-    || (navigator.maxTouchPoints || 0) > 0);
+// Zusätzliche Raster-Grund-Styles (keyless) als vollständige MapLibre-Styles.
+// Terrain/Hillshade/Overlays baut der style.load-Handler danach wieder auf.
+function rasterStyle(id, tiles, attribution, maxzoom) {
+  return {
+    version: 8,
+    sources: { [id]: { type: 'raster', tiles, tileSize: 256, maxzoom, attribution } },
+    layers: [{ id: id + '-base', type: 'raster', source: id }],
+  };
+}
+const RASTER = {
+  topo: () => rasterStyle('topo', [
+    'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+    'https://b.tile.opentopomap.org/{z}/{x}/{y}.png',
+    'https://c.tile.opentopomap.org/{z}/{x}/{y}.png',
+  ], 'Kartendaten: © <a href="https://opentopomap.org/">OpenTopoMap</a> (CC-BY-SA)', 17),
+  satellite: () => rasterStyle('satellite', [
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  ], 'Bilder: © <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics', 19),
+};
+const BASE_ORDER = ['standard', 'topo', 'satellite'];
+const BASE_LABEL = { standard: 'Standard (3D)', topo: 'Topo-Wanderkarte', satellite: 'Satellit' };
+
+// Gewählter Grund-Style; überlebt Neuladen. 'standard' = Vektor (themenabhängig).
+let currentBase = (() => {
+  try { const b = localStorage.getItem('wanderplan.mapbase'); return BASE_ORDER.includes(b) ? b : 'standard'; }
+  catch { return 'standard'; }
+})();
+function styleForCurrent() {
+  if (currentBase === 'topo') return RASTER.topo();
+  if (currentBase === 'satellite') return RASTER.satellite();
+  return STYLES[currentTheme];
+}
 
 export const map = new maplibregl.Map({
   container: 'map',
-  style: STYLES.light,
+  style: styleForCurrent(),
   center: [11.4041, 47.2692],
   zoom: 12,
   pitch: 55,
@@ -37,9 +65,11 @@ export const map = new maplibregl.Map({
   antialias: false,
   refreshExpiredTiles: false,
   renderWorldCopies: false,
-  // Auf dem Handy deutlich weniger Kacheln im Speicher halten (weniger Ruckeln
-  // und weniger Speicherdruck); am Desktop großzügiger für schnelles Schwenken.
-  maxTileCacheSize: IS_MOBILE ? 60 : 512,
+  // Genügend Kacheln im Speicher halten. WICHTIG: nicht zu niedrig setzen – auf
+  // hochauflösenden Handys braucht die 3D-Ansicht (Vektor + Gelände-DEM +
+  // Hillshade) viele Kacheln gleichzeitig; ein zu kleiner Cache lässt die Karte
+  // leer/kaputt wirken, weil Kacheln sofort wieder verworfen werden.
+  maxTileCacheSize: 512,
   collectResourceTiming: false,
 });
 
@@ -96,7 +126,7 @@ map.on('error', (e) => {
 setTimeout(() => {
   if (!ready && !styleRetried) {
     styleRetried = true;
-    try { map.setStyle(STYLES[currentTheme]); } catch { /* ignore */ }
+    try { map.setStyle(styleForCurrent()); } catch { /* ignore */ }
   }
 }, 9000);
 
@@ -124,12 +154,32 @@ function applyBuildings() {
 export function setBuildings3d(on) { buildings3dOn = on; applyBuildings(); }
 
 // Hell/Dunkel umschalten (wechselt den Vektor-Style; Overlays/Marker bleiben).
+// Wirkt nur, wenn der Standard-(Vektor-)Grund-Style aktiv ist – Topo/Satellit
+// haben kein Hell/Dunkel.
 export function setMapTheme(theme) {
   const t = theme === 'dark' ? 'dark' : 'light';
   if (t === currentTheme) return;
   currentTheme = t;
+  if (currentBase !== 'standard') return; // Raster-Grund-Style: Theme betrifft nur die UI
   ready = false;
   map.setStyle(STYLES[t]); // löst erneut 'style.load' aus → Handler baut alles wieder auf
+}
+
+// Grund-Karte wählen: 'standard' (3D-Vektor) | 'topo' | 'satellite'.
+export function setBaseStyle(base) {
+  const b = BASE_ORDER.includes(base) ? base : 'standard';
+  if (b === currentBase) return currentBase;
+  currentBase = b;
+  try { localStorage.setItem('wanderplan.mapbase', b); } catch { /* egal */ }
+  ready = false;
+  map.setStyle(styleForCurrent());
+  return currentBase;
+}
+export function getBaseStyle() { return currentBase; }
+export function getBaseLabel(base) { return BASE_LABEL[base || currentBase] || 'Standard (3D)'; }
+// Nächsten Grund-Style durchschalten; gibt den neuen Schlüssel zurück.
+export function cycleBaseStyle() {
+  return setBaseStyle(BASE_ORDER[(BASE_ORDER.indexOf(currentBase) + 1) % BASE_ORDER.length]);
 }
 
 // ---------- Geometrie-Helfer ----------
