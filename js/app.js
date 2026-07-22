@@ -1694,8 +1694,12 @@ $('langBtn').addEventListener('click', () => {
 // ---------- Karten-Fehler-Fallback ----------
 let mapIsReady = false;
 mapView.onReady(() => { mapIsReady = true; const me = $('mapError'); if (me) me.classList.add('hidden'); });
+// Wenn die 3D-Vektorkarte klemmt, springt automatisch eine Raster-Karte ein.
+mapView.onMapFallback(() => showToast(t('toast.mapFallback'), { duration: 5000 }));
 $('mapErrorReload').addEventListener('click', () => window.location.reload());
-setTimeout(() => { if (!mapIsReady) $('mapError').classList.remove('hidden'); }, 12000);
+// Letztes Netz: rendert nach 14 s gar nichts (auch der Raster-Fallback nicht),
+// sichtbare Fehlermeldung mit Neu-laden-Knopf statt weißer Fläche.
+setTimeout(() => { if (!mapIsReady) $('mapError').classList.remove('hidden'); }, 14000);
 
 // ---------- Verbindungslinie (Luftlinie ich ↔ verfolgte Person) ----------
 

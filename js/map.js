@@ -88,25 +88,46 @@ export function onReady(fn) { if (ready) fn(); else readyOnce.push(fn); }
 // überleben und danach wieder angewendet werden.
 const overlayData = {};
 
-map.on('style.load', () => {
-  if (!map.getSource('dem')) {
-    map.addSource('dem', {
-      type: 'raster-dem',
-      tiles: [DEM_TILES],
-      encoding: 'terrarium',
-      tileSize: 256,
-      maxzoom: 13,
-      attribution: 'Höhendaten: <a href="https://registry.opendata.aws/terrain-tiles/">Terrain Tiles</a>',
-    });
-  }
-  map.setTerrain({ source: 'dem', exaggeration: 1.25 });
+// ---------- Auffangnetz: garantiert eine sichtbare Karte ----------
+// Lädt der Vektor-Style (OpenFreeMap) nicht – Quelle langsam/aus, Worker- oder
+// Netzfehler – schalten wir automatisch auf einen ZUVERLÄSSIGEN Raster-Grundstil
+// (Esri World Topo, keyless, enterprise-gehostet) um. Raster-Kacheln sind reine
+// Bilder und brauchen keinen Vektor-Worker → funktionieren auch dann, wenn die
+// Vektor-Verarbeitung klemmt. So bleibt die Karte nie weiß.
+const FALLBACK_STYLE = () => rasterStyle(
+  'fallback',
+  ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],
+  'Karten © <a href="https://www.esri.com/">Esri</a>', 19,
+);
+let fallbackActive = false;
+let onFallbackCb = null;
+export function onMapFallback(fn) { onFallbackCb = fn; }
+function activateFallback() {
+  if (fallbackActive || ready) return;
+  fallbackActive = true;
+  try { map.setPitch(0); } catch { /* egal */ }
+  try { map.setStyle(FALLBACK_STYLE()); } catch { /* egal */ }
+  if (onFallbackCb) { try { onFallbackCb(); } catch { /* egal */ } }
+}
+export function isMapFallback() { return fallbackActive; }
 
-  const firstSymbol = (map.getStyle().layers.find((l) => l.type === 'symbol') || {}).id;
-  if (!map.getLayer('hillshade')) {
-    map.addLayer({
-      id: 'hillshade', type: 'hillshade', source: 'dem',
-      paint: { 'hillshade-exaggeration': 0.28 },
-    }, firstSymbol);
+map.on('style.load', () => {
+  // 3D-Gelände nur beim Vektor-Standardstil und robust: ein DEM-/Terrain-Fehler
+  // darf die Grundkarte NIE verhindern.
+  if (!fallbackActive) {
+    try {
+      if (!map.getSource('dem')) {
+        map.addSource('dem', {
+          type: 'raster-dem', tiles: [DEM_TILES], encoding: 'terrarium', tileSize: 256, maxzoom: 13,
+          attribution: 'Höhendaten: <a href="https://registry.opendata.aws/terrain-tiles/">Terrain Tiles</a>',
+        });
+      }
+      map.setTerrain({ source: 'dem', exaggeration: 1.25 });
+      const firstSymbol = (map.getStyle().layers.find((l) => l.type === 'symbol') || {}).id;
+      if (!map.getLayer('hillshade')) {
+        map.addLayer({ id: 'hillshade', type: 'hillshade', source: 'dem', paint: { 'hillshade-exaggeration': 0.28 } }, firstSymbol);
+      }
+    } catch (e) { console.warn('Gelände übersprungen:', e && e.message); }
   }
   applySky();
   applyBuildings();
@@ -116,19 +137,11 @@ map.on('style.load', () => {
   readyOnce.splice(0).forEach((fn) => fn());
 });
 
-// Robustheit: Lädt der Vektor-Style beim Start nicht (z. B. wackeliges Handynetz
-// oder kurzer Aussetzer), bliebe die Karte weiß. Einmalig neu anstoßen, statt
-// hängen zu bleiben. Fehler nur protokollieren – Kacheln holt MapLibre selbst nach.
-let styleRetried = false;
 map.on('error', (e) => {
   if (e && e.error) console.warn('MapLibre:', e.error.message || e.error);
 });
-setTimeout(() => {
-  if (!ready && !styleRetried) {
-    styleRetried = true;
-    try { map.setStyle(styleForCurrent()); } catch { /* ignore */ }
-  }
-}, 9000);
+// Ist die Karte nach kurzer Zeit noch nicht bereit, aufs Raster-Netz umschalten.
+setTimeout(() => { if (!ready) activateFallback(); }, 6500);
 
 function applySky() {
   try {
