@@ -372,6 +372,27 @@ body.sheet-dragging .pin-card { transition: none; }
   .pin-card { left: 420px; transform: none; bottom: 20px; }
 }
 
+/* SOS-/Notfall */
+.sos-btn { font-size: 1.05rem; border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.sos-card {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--sheet-h) + 16px);
+  width: min(340px, calc(100% - 24px));
+  background: var(--glass);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: 16px; padding: 14px 16px; box-shadow: var(--shadow); z-index: 1150;
+  transition: bottom 0.25s ease;
+}
+body.sheet-dragging .sos-card { transition: none; }
+.sos-head { font-weight: 800; font-size: 1rem; margin-bottom: 8px; color: var(--danger); }
+.sos-coords { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.02rem; }
+.sos-meta { font-size: 0.8rem; color: var(--text-dim); margin: 4px 0 12px; min-height: 1em; }
+.sos-note { font-size: 0.74rem; color: var(--text-dim); margin: 10px 0 0; }
+@media (min-width: 900px) {
+  .sos-card { left: 420px; transform: none; bottom: 20px; }
+}
+
 /* POI-Marker (Emoji) */
 .poi-icon {
   font-size: 1.35rem; line-height: 1; cursor: pointer;
@@ -586,6 +607,23 @@ select#loopKm, .field-row select {
   z-index: 2500; text-align: center; box-shadow: var(--shadow);
 }
 .toast.error { background: var(--danger); color: #fff; }
+
+/* „Neue Version"-Banner (PWA-Update) */
+.update-banner {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  top: calc(var(--topbar-h) + env(safe-area-inset-top) + 8px);
+  display: flex; align-items: center; gap: 10px;
+  background: var(--accent); color: var(--accent-ink);
+  padding: 9px 10px 9px 14px; border-radius: 12px;
+  box-shadow: var(--shadow); z-index: 2600;
+  font-size: 0.86rem; font-weight: 600; max-width: calc(100vw - 24px);
+}
+.update-banner .ub-btn {
+  border: none; background: rgba(255, 255, 255, 0.22); color: var(--accent-ink);
+  font-weight: 800; padding: 6px 12px; border-radius: 9px; cursor: pointer; white-space: nowrap;
+}
+.update-banner .ub-btn:active { transform: scale(0.97); }
+.update-banner .ub-x { border: none; background: transparent; color: var(--accent-ink); cursor: pointer; font-size: 0.95rem; padding: 2px 4px; opacity: 0.85; }
 
 /* ===================== schmale Handys ===================== */
 /* Kopfleiste auf dem Handy entschlacken: die drehende Kompassrose zeigt die
