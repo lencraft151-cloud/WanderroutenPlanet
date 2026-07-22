@@ -17,6 +17,11 @@ let currentTheme = 'light';
 let buildings3dOn = true;
 let gradeVisible = false;
 
+// Handy/Touch erkennen – dort sparsamer rendern, damit die Karte flüssig bleibt.
+const IS_MOBILE = (typeof window !== 'undefined')
+  && ((window.matchMedia && window.matchMedia('(max-width: 899px)').matches)
+    || (navigator.maxTouchPoints || 0) > 0);
+
 export const map = new maplibregl.Map({
   container: 'map',
   style: STYLES.light,
@@ -32,7 +37,9 @@ export const map = new maplibregl.Map({
   antialias: false,
   refreshExpiredTiles: false,
   renderWorldCopies: false,
-  maxTileCacheSize: 512,
+  // Auf dem Handy deutlich weniger Kacheln im Speicher halten (weniger Ruckeln
+  // und weniger Speicherdruck); am Desktop großzügiger für schnelles Schwenken.
+  maxTileCacheSize: IS_MOBILE ? 60 : 512,
   collectResourceTiming: false,
 });
 
@@ -78,6 +85,20 @@ map.on('style.load', () => {
   pending.splice(0).forEach((fn) => fn());
   readyOnce.splice(0).forEach((fn) => fn());
 });
+
+// Robustheit: Lädt der Vektor-Style beim Start nicht (z. B. wackeliges Handynetz
+// oder kurzer Aussetzer), bliebe die Karte weiß. Einmalig neu anstoßen, statt
+// hängen zu bleiben. Fehler nur protokollieren – Kacheln holt MapLibre selbst nach.
+let styleRetried = false;
+map.on('error', (e) => {
+  if (e && e.error) console.warn('MapLibre:', e.error.message || e.error);
+});
+setTimeout(() => {
+  if (!ready && !styleRetried) {
+    styleRetried = true;
+    try { map.setStyle(STYLES[currentTheme]); } catch { /* ignore */ }
+  }
+}, 9000);
 
 function applySky() {
   try {
@@ -344,24 +365,40 @@ export function setView(lat, lng, zoom) {
 }
 export function panTo(lat, lng, zoom) { setView(lat, lng, zoom); }
 
-// Sanftes Nachführen beim Folgen (kurze Animation, optional Blickrichtung
-// für den Navigations-Modus – Heading-Up). Läuft bereits eine Kamerafahrt,
-// wird direkt gesprungen (jumpTo) statt eine zweite easeTo zu stapeln – das
-// verhindert eine Re-Entrancy im MapLibre-Renderloop.
-export function followTo(lat, lng, { zoom, bearing } = {}) {
-  // Läuft bereits eine Kamerafahrt, dieses Update überspringen – das nächste
-  // GPS-Update führt ohnehin nach. Verhindert überlappende easeTo-Aufrufe, die
-  // in MapLibre eine Render-Re-Entrancy auslösen könnten.
-  if (map.isMoving && map.isMoving()) return;
-  map.easeTo({
-    center: [lng, lat],
-    zoom: zoom != null ? zoom : map.getZoom(),
-    bearing: bearing != null ? bearing : map.getBearing(),
-    duration: 320,
-    essential: true,
-  });
+// Gebündeltes Kamera-Nachführen: GPS (Position) und Kompass (Blickrichtung)
+// feuern viele Male pro Sekunde. Würde für jedes Ereignis sofort ein easeTo
+// gestapelt, ruckelt die Karte und MapLibre kann in eine Render-Re-Entrancy
+// geraten („Attempting to run(), but is already running"). Deshalb sammeln wir
+// die Zielwerte und wenden sie höchstens einmal pro Frame an – außerhalb der
+// Event-Callbacks (requestAnimationFrame) und nie, während schon eine
+// Kamerafahrt läuft.
+let camReq = null;
+let camRAF = 0;
+function flushCam() {
+  camRAF = 0;
+  const o = camReq;
+  camReq = null;
+  if (!o) return;
+  if (map.isMoving && map.isMoving()) return; // laufende Fahrt nicht stapeln; nächstes Update führt nach
+  const opts = { duration: 300, essential: true };
+  if (o.center) opts.center = o.center;
+  if (o.zoom != null) opts.zoom = o.zoom;
+  if (o.bearing != null) opts.bearing = o.bearing;
+  try { map.easeTo(opts); } catch { /* MapLibre-intern, unkritisch */ }
 }
-export function setBearing(deg) { map.easeTo({ bearing: deg, duration: 320, essential: true }); }
+function scheduleCam(o) {
+  camReq = Object.assign(camReq || {}, o);
+  if (!camRAF) camRAF = requestAnimationFrame(flushCam);
+}
+
+// Sanftes Nachführen beim Folgen (optional Blickrichtung für den
+// Navigations-Modus – Heading-Up). Zoom/Bearing werden beibehalten, wenn nicht
+// angegeben.
+export function followTo(lat, lng, { zoom, bearing } = {}) {
+  scheduleCam({ center: [lng, lat], zoom, bearing });
+}
+// Blickrichtung (Heading-Up) drehen – ebenfalls gebündelt.
+export function setBearing(deg) { scheduleCam({ bearing: deg }); }
 export function getBearing() { return map.getBearing(); }
 // Luftlinien-Abstand (m) eines Punktes zur aktuellen Karten-Mitte.
 export function distanceToCenter(lat, lng) {

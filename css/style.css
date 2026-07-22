@@ -588,10 +588,21 @@ select#loopKm, .field-row select {
 .toast.error { background: var(--danger); color: #fff; }
 
 /* ===================== schmale Handys ===================== */
-@media (max-width: 360px) {
-  .brand-name { display: none; }
+/* Kopfleiste auf dem Handy entschlacken: die drehende Kompassrose zeigt die
+   Richtung, der Zahlenwert daneben darf für mehr Übersicht weichen. */
+@media (max-width: 480px) {
+  .topbar { gap: 6px; padding-left: 10px; padding-right: 10px; }
+  .topbar-widgets { gap: 6px; }
   .compass-text { display: none; }
+  .altimeter { padding: 5px 9px; font-size: 0.84rem; }
+  .icon-btn, .compass { width: 38px; height: 38px; }
 }
+@media (max-width: 380px) {
+  .brand-name { display: none; }
+}
+
+/* In der installierten App ist der Store-/Download-Knopf überflüssig. */
+body.installed-app .app-menu-wrap { display: none !important; }
 
 /* ===================== Desktop ===================== */
 @media (min-width: 900px) {
