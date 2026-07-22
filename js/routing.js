@@ -1,8 +1,22 @@
 // Routenberechnung: BRouter (Wanderwege) mit Luftlinien-Fallback,
 // Distanz-/Höhenmeter-Statistik und Gehzeit nach DAV-Formel.
 
-const BROUTER_URL = 'https://brouter.de/brouter';
+// Mehrere BRouter-Server, damit möglichst immer eine echte Wanderroute
+// herauskommt (nicht die Luftlinie).
+const BROUTER_HOSTS = [
+  'https://brouter.de/brouter',
+  'https://bikerouter.de/brouter',
+];
 const ELEVATION_URL = 'https://api.open-meteo.com/v1/elevation';
+
+// Die UI-Auswahl auf tatsächlich existierende BRouter-Profile abbilden.
+// („hiking-mountain" gibt es bei BRouter NICHT → führte bisher zur Luftlinie.)
+const PROFILE_MAP = {
+  'hiking-mountain': 'hiking-beta',
+  'trekking': 'trekking',
+  'shortest': 'shortest',
+};
+function brouterProfile(profile) { return PROFILE_MAP[profile] || 'trekking'; }
 
 const EARTH_RADIUS = 6371000;
 
@@ -67,17 +81,33 @@ async function fetchWithTimeout(url, timeoutMs) {
   }
 }
 
-async function fetchBRouter(waypoints, profile) {
+async function fetchBRouterOnce(host, waypoints, prof) {
   const lonlats = waypoints.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join('|');
-  const url = `${BROUTER_URL}?lonlats=${lonlats}&profile=${encodeURIComponent(profile)}&alternativeidx=0&format=geojson`;
-  const res = await fetchWithTimeout(url, 20000);
-  if (!res.ok) throw new Error(`BRouter-Fehler ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const url = `${host}?lonlats=${lonlats}&profile=${encodeURIComponent(prof)}&alternativeidx=0&format=geojson`;
+  const res = await fetchWithTimeout(url, 12000);
+  if (!res.ok) throw new Error(`BRouter-Fehler ${res.status}`);
   const geojson = await res.json();
   const feature = geojson.features && geojson.features[0];
   const lineCoords = feature && feature.geometry && feature.geometry.coordinates;
   if (!lineCoords || lineCoords.length < 2) throw new Error('BRouter lieferte keine Route');
   // GeoJSON ist [lon, lat, ele] → intern [lat, lon, ele]
   return lineCoords.map((c) => [c[1], c[0], c.length > 2 ? c[2] : null]);
+}
+
+// Versucht mehrere Server/Profile, damit möglichst immer eine Wanderroute
+// zustande kommt. Reihenfolge: gewähltes Profil auf beiden Servern, dann als
+// Rückfall „trekking" (auch ein Wanderweg-Profil) – erst danach Luftlinie.
+async function fetchBRouter(waypoints, profile) {
+  const prof = brouterProfile(profile);
+  const candidates = [];
+  for (const host of BROUTER_HOSTS) candidates.push([host, prof]);
+  if (prof !== 'trekking') for (const host of BROUTER_HOSTS) candidates.push([host, 'trekking']);
+  let lastErr = null;
+  for (const [host, p] of candidates) {
+    try { return await fetchBRouterOnce(host, waypoints, p); }
+    catch (err) { lastErr = err; }
+  }
+  throw lastErr || new Error('BRouter nicht erreichbar');
 }
 
 // Luftlinie: Segmente in Zwischenpunkte unterteilen (max. 100 Punkte gesamt,

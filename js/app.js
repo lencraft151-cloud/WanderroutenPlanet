@@ -223,6 +223,8 @@ function showRoute(route) {
   $('chartEmpty').classList.toggle('hidden', hasProfile);
   updateRouteExtras(route);
   maybeShareRoute();
+  buildManeuvers(route.coords);
+  updateTurnByTurn();
 }
 
 function clearRouteDisplay() {
@@ -236,6 +238,7 @@ function clearRouteDisplay() {
   stopFlyover();
   mapView.clearRouteGrade();
   $('routeExtras').classList.add('hidden');
+  maneuvers = []; routeCum = []; hideTurn();
   if (share.isSharing() && $('shareRouteToggle') && $('shareRouteToggle').checked) share.publishRoute(null);
 }
 
@@ -563,7 +566,8 @@ function updateRecenterChip() {
 // Kleiner Long-Press-Helfer (Maus & Touch).
 function attachLongPress(el, fn, ms = 550) {
   let timer = null;
-  const start = () => { timer = setTimeout(() => { timer = null; fn(); }, ms); };
+  let fired = false;
+  const start = () => { fired = false; timer = setTimeout(() => { timer = null; fired = true; fn(); }, ms); };
   const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
   el.addEventListener('touchstart', start, { passive: true });
   el.addEventListener('touchend', cancel);
@@ -571,6 +575,11 @@ function attachLongPress(el, fn, ms = 550) {
   el.addEventListener('mousedown', start);
   el.addEventListener('mouseup', cancel);
   el.addEventListener('mouseleave', cancel);
+  // Den Klick, der direkt nach einem Long-Press kommt, verwerfen (sonst würde
+  // z. B. der Ortungs-Knopf sofort wieder starten).
+  el.addEventListener('click', (e) => {
+    if (fired) { fired = false; e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
 }
 
 mapView.onDragStart(() => { follow = false; followShared = false; });
@@ -593,6 +602,7 @@ sensors.onPosition((pos) => {
   }
   hadFirstFix = true;
   updateRecenterChip();
+  updateTurnByTurn();
 
   const chip = $('gpsChip');
   chip.textContent = `± ${Math.round(accuracy)} m${speed != null && !Number.isNaN(speed) ? ` · ${fmtSpeed(speed)}` : ''}`;
@@ -691,6 +701,7 @@ function handleHeading(heading) {
     roseRotation -= delta;
   }
   lastHeading = heading;
+  $('compassText').classList.remove('hidden');
   $('compassRose').style.transform = `rotate(${roseRotation}deg)`;
   $('compassText').textContent = `${String(Math.round(heading)).padStart(3, '0')}° ${cardinal(heading)}`;
   mapView.setPositionHeading(heading);
@@ -709,15 +720,94 @@ $('btnNav').addEventListener('click', async () => {
     if (!sensors.compassEnabled()) {
       try { await sensors.enableCompass(handleHeading); } catch (err) { showToast(err.message, { error: true }); }
     }
-    if (!mapView.is3D()) mapView.toggle3D();
+    if (!mapView.is3D()) { mapView.toggle3D(); syncBtn3d(); }
     if (!sensors.gpsRunning()) { follow = true; hadFirstFix = false; sensors.startGPS(); setLocateButton(); }
-    else recenterOnMe();
+    else { follow = true; updateRecenterChip(); } // Nachführen übernimmt das nächste GPS-Update (kein doppeltes easeTo)
     showToast('🧭 Navigations-Modus: Karte dreht sich in Blickrichtung.', { duration: 4000 });
+    if (!isNativeApp() && !navHintShown) {
+      navHintShown = true;
+      showToast('💡 Abbiege-Ansagen („in 150 m rechts …") gibt es in der WanderPlan-App.', { duration: 6000 });
+    }
+    updateTurnByTurn();
   } else {
     mapView.setBearing(0);
+    hideTurn();
     showToast('Navigations-Modus aus (Karte wieder genordet).');
   }
 });
+let navHintShown = false;
+
+// ---------- Abbiege-Navigation (Turn-by-Turn) – Ansagen nur in der App ----------
+
+function isNativeApp() {
+  try { return !!(window.WanderPlanNative && typeof WanderPlanNative.isNativeApp === 'function' && WanderPlanNative.isNativeApp()); }
+  catch { return false; }
+}
+function nativeNotify(title, body) {
+  try { if (window.WanderPlanNative && typeof WanderPlanNative.notify === 'function') WanderPlanNative.notify(title, body); } catch {}
+}
+
+let maneuvers = [];   // [{ at: MeterAbStart, dir: 'links'|'rechts' }]
+let routeCum = [];    // kumulierte Distanz je Stützpunkt
+let lastTurnKey = null;
+
+// Abzweigungen aus der Routen-Geometrie ableiten (grobe, aber nützliche Hinweise).
+function buildManeuvers(coords) {
+  maneuvers = [];
+  routeCum = [0];
+  if (!coords || coords.length < 2) return;
+  for (let i = 1; i < coords.length; i++) {
+    routeCum[i] = routeCum[i - 1] + haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+  }
+  for (let i = 1; i < coords.length - 1; i++) {
+    const b1 = bearing(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+    const b2 = bearing(coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]);
+    const d = ((b2 - b1 + 540) % 360) - 180;
+    if (Math.abs(d) >= 35) {
+      if (!maneuvers.length || routeCum[i] - maneuvers[maneuvers.length - 1].at > 25) {
+        maneuvers.push({ at: routeCum[i], dir: d > 0 ? 'rechts' : 'links' });
+      }
+    }
+  }
+}
+
+function updateTurnByTurn() {
+  if (!navMode || !isNativeApp() || !currentRoute || !currentRoute.coords || !lastPosition || routeCum.length < 2) {
+    hideTurn();
+    return;
+  }
+  const coords = currentRoute.coords;
+  const la = lastPosition.coords.latitude, lo = lastPosition.coords.longitude;
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < coords.length; i++) {
+    const d = haversine(la, lo, coords[i][0], coords[i][1]);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  const along = routeCum[best];
+  const endDist = routeCum[routeCum.length - 1] - along;
+  const next = maneuvers.find((m) => m.at > along + 3);
+  let icon, title, body;
+  if (endDist < 30) { icon = '🏁'; title = 'Ziel erreicht'; body = 'Du bist am Ziel angekommen.'; }
+  else if (next) {
+    const dd = Math.max(0, Math.round(next.at - along));
+    icon = next.dir === 'rechts' ? '➡️' : '⬅️';
+    title = `In ${fmtDistance(dd)} ${next.dir}`;
+    body = `Dann weiter Richtung Ziel (noch ${fmtDistance(endDist)}).`;
+  } else { icon = '⬆️'; title = 'Geradeaus'; body = `Noch ${fmtDistance(endDist)} bis zum Ziel.`; }
+  showTurn(icon, title, body);
+  // Ansage (Benachrichtigung) nur bei Wechsel, damit es nicht spammt.
+  if (title !== lastTurnKey) { lastTurnKey = title; nativeNotify(title, body); }
+}
+
+function showTurn(icon, title, sub) {
+  const el = $('navTurn');
+  if (!el) return;
+  $('navTurnIcon').textContent = icon;
+  $('navTurnText').textContent = title;
+  $('navTurnSub').textContent = sub;
+  el.classList.remove('hidden');
+}
+function hideTurn() { const el = $('navTurn'); if (el) el.classList.add('hidden'); lastTurnKey = null; }
 
 $('compassBtn').addEventListener('click', async () => {
   if (sensors.compassEnabled()) return;
@@ -1063,12 +1153,20 @@ function onSharedMessage(data) {
 }
 
 // Der Sender teilt (optional) seine geplante Route mit.
+// Deduplizieren, damit wiederholte (retained) Nachrichten nicht spammen.
+let lastSharedRouteKey = null;
 function onSharedRoute(coords) {
   if (coords && coords.length >= 2) {
+    const key = `${coords.length}:${coords[0].join(',')}:${coords[coords.length - 1].join(',')}`;
+    if (key === lastSharedRouteKey) return; // unverändert → nichts tun
+    const firstTime = lastSharedRouteKey === null;
+    lastSharedRouteKey = key;
     mapView.drawRoute(coords, {});
     if (!sharedData) mapView.fitToCoords(coords);
-    showToast('🗺 Der Sender teilt seine geplante Route.', { duration: 4000 });
+    if (firstTime) showToast('🗺 Der Sender teilt seine geplante Route.', { duration: 4000 });
   } else {
+    if (lastSharedRouteKey === null) return;
+    lastSharedRouteKey = null;
     mapView.clearRouteLine();
   }
 }
@@ -1118,13 +1216,32 @@ function updateViewerDerived() {
   }
 }
 
+// ---------- Werkzeug-Menü (bündelt 3D / Navi / Orte) ----------
+
+$('btnTools').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = $('toolCluster').classList.toggle('open');
+  $('btnTools').classList.toggle('active', open);
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.map-fabs')) {
+    $('toolCluster').classList.remove('open');
+    $('btnTools').classList.remove('active');
+  }
+});
+
 // ---------- 2D/3D-Umschalter ----------
 
+function syncBtn3d() {
+  const on = mapView.is3D();
+  $('btn3d').classList.toggle('active', on);
+  $('btn3d').textContent = on ? '🏔' : '🗺';
+}
+
 $('btn3d').addEventListener('click', () => {
-  const now3d = mapView.toggle3D();
-  $('btn3d').classList.toggle('active', now3d);
-  $('btn3d').textContent = now3d ? '🏔' : '🗺';
-  showToast(now3d ? '3D-Geländeansicht' : '2D-Ansicht');
+  mapView.toggle3D();
+  syncBtn3d();
+  showToast(mapView.is3D() ? '3D-Geländeansicht' : '2D-Ansicht');
 });
 
 // ---------- QR-Code ----------
@@ -1526,11 +1643,14 @@ $('btnPoi').addEventListener('click', async () => {
 });
 
 mapView.onPoiClick((p) => {
+  // Info-Karte zeigen mit „Route hierher" (echte Wanderroute) / „Als Ziel".
+  pinPoint = { lat: p.lat, lon: p.lon, name: p.name };
   lastSearchPlace = { short: p.name, name: p.name, lat: p.lat, lon: p.lon };
+  $('pinName').textContent = `${p.emoji} ${p.name}`;
+  $('pinMeta').textContent = (p.ele != null ? `⛰ ${p.ele} m · ` : '')
+    + `${fmtDistance(p.dist)} entfernt · ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
+  $('pinCard').classList.remove('hidden');
   mapView.flyTo(p.lat, p.lon, Math.max(mapView.getZoom(), 14));
-  startNav(p.lat, p.lon, p.name);
-  const eleTxt = p.ele != null ? ` · ${p.ele} m` : '';
-  showToast(`${p.emoji} ${p.name}${eleTxt} – Navigation aktiv. „Route zum Ziel" plant den Weg dorthin.`, { duration: 5000 });
 });
 
 // ---------- Ziel-Navigation (Pfeil + Entfernung/ETA) ----------
@@ -1618,11 +1738,20 @@ $('btnFlyover').addEventListener('click', () => {
   });
 });
 
-// ---------- App-Download-Button in der nativen App ausblenden ----------
+// ---------- App-Download-Menü (📱 → Android / iOS) ----------
 
+$('appDownloadBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('appMenu').classList.toggle('hidden');
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.app-menu-wrap')) $('appMenu').classList.add('hidden');
+});
+// In der nativen App ist der Download überflüssig → ganzes Menü ausblenden.
 try {
-  if (window.WanderPlanNative && typeof WanderPlanNative.isNativeApp === 'function' && WanderPlanNative.isNativeApp()) {
-    $('appDownloadBtn').style.display = 'none';
+  if (isNativeApp()) {
+    const w = document.querySelector('.app-menu-wrap');
+    if (w) w.style.display = 'none';
   }
 } catch { /* ignore */ }
 

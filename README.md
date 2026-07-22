@@ -17,9 +17,14 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   (OpenStreetMap-Nominatim).
 - **🤖 Automatischer Routenplaner**: Route von deinem Standort zum gesuchten
   oder angetippten Ziel – oder eine **Rundtour** in Wunschlänge.
-- **📌 Orte in der Nähe**: Hütten, Gipfel, Wasserquellen, Aussichtspunkte und
-  Bänke rund um den Kartenausschnitt (OpenStreetMap-Overpass, keyless) – antippen
-  startet die Navigation dorthin.
+- **📌 Orte in der Nähe**: Hütten & Almen, Gipfel, **Seilbahnen/Lifte**,
+  Wasserquellen, Aussichtspunkte und Einkehr rund um den Kartenausschnitt
+  (OpenStreetMap-Overpass, keyless) – antippen öffnet eine Info-Karte mit
+  **„Route hierher"** (echte Wanderroute) und „Als Ziel".
+- **🧭 Abbiege-Navigation** im Navigations-Modus: Hinweise „in 150 m rechts …"
+  mit Benachrichtigungen – verfügbar in der **Android-App**.
+- **🍎 iPhone-Installation**: WanderPlan per Konfigurationsprofil (Web-Clip) als
+  Vollbild-App auf den iOS-Home-Bildschirm – siehe Download-Menü (📱) im Kopf.
 - **🧭 Ziel-Navigation**: Kompass-Pfeil, der immer zum Ziel zeigt, plus
   Luftlinien-Entfernung und geschätzte Ankunftszeit (ETA).
 - **📍 Auf dem eigenen Punkt bleiben**: automatisches Folgen; ein

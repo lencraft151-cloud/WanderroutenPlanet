@@ -2,6 +2,7 @@ package eu.beissert.wanderplan
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -150,6 +151,36 @@ class MainActivity : AppCompatActivity() {
         /** Erlaubt der Seite zu erkennen, dass sie in der nativen App läuft. */
         @android.webkit.JavascriptInterface
         fun isNativeApp(): Boolean = true
+
+        /** Abbiege-Ansage als System-Benachrichtigung (Turn-by-Turn-Navigation). */
+        @android.webkit.JavascriptInterface
+        fun notify(title: String, body: String) {
+            runOnUiThread { showTurnNotification(title, body) }
+        }
+    }
+
+    private fun showTurnNotification(title: String, body: String) {
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                NAV_CHANNEL_ID, "Navigation", android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply { description = "Abbiege-Hinweise während der Navigation." }
+            mgr.createNotificationChannel(channel)
+        }
+        val open = android.app.PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = androidx.core.app.NotificationCompat.Builder(this, NAV_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setSmallIcon(android.R.drawable.ic_menu_directions)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .build()
+        mgr.notify(NAV_NOTIF_ID, n)
     }
 
     private fun ensureBackgroundAndStart(payloadJson: String) {
@@ -213,5 +244,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val REQ_LOCATION = 101
         private const val REQ_BACKGROUND = 102
+        private const val NAV_CHANNEL_ID = "wanderplan_nav"
+        private const val NAV_NOTIF_ID = 43
     }
 }
