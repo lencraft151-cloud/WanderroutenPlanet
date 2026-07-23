@@ -101,15 +101,27 @@ const FALLBACK_STYLE = () => rasterStyle(
 );
 let fallbackActive = false;
 let onFallbackCb = null;
+let onBlankCb = null;
 export function onMapFallback(fn) { onFallbackCb = fn; }
-function activateFallback() {
-  if (fallbackActive || ready) return;
+export function onMapBlank(fn) { onBlankCb = fn; }
+export function isMapFallback() { return fallbackActive; }
+
+// Erzwingt den Raster-Grundstil (Esri). Raster-Kacheln sind reine Bilder und
+// kommen ohne Vektor-Worker aus → funktionieren auch dann, wenn die
+// Vektor-Verarbeitung auf dem Gerät versagt. Terrain/Neigung werden entfernt,
+// damit die einfache Karte möglichst zuverlässig rendert.
+function switchToFallback() {
+  if (fallbackActive) return;
   fallbackActive = true;
+  ready = false;
+  try { map.setTerrain(null); } catch { /* egal */ }
   try { map.setPitch(0); } catch { /* egal */ }
   try { map.setStyle(FALLBACK_STYLE()); } catch { /* egal */ }
   if (onFallbackCb) { try { onFallbackCb(); } catch { /* egal */ } }
+  // Lädt selbst die einfache Raster-Karte nicht (Gerät kann gar nicht rendern),
+  // nach 6 s die sichtbare Fehlermeldung zeigen statt weiter schwarz zu bleiben.
+  setTimeout(() => { if (!ready && onBlankCb) { try { onBlankCb(); } catch { /* egal */ } } }, 6000);
 }
-export function isMapFallback() { return fallbackActive; }
 
 map.on('style.load', () => {
   // 3D-Gelände nur beim Vektor-Standardstil und robust: ein DEM-/Terrain-Fehler
@@ -140,8 +152,12 @@ map.on('style.load', () => {
 map.on('error', (e) => {
   if (e && e.error) console.warn('MapLibre:', e.error.message || e.error);
 });
+// WebGL-Kontext verloren (iOS knausert mit GPU-Kontexten) → Raster versuchen.
+try {
+  map.getCanvas().addEventListener('webglcontextlost', () => { switchToFallback(); }, { once: true });
+} catch { /* egal */ }
 // Ist die Karte nach kurzer Zeit noch nicht bereit, aufs Raster-Netz umschalten.
-setTimeout(() => { if (!ready) activateFallback(); }, 6500);
+setTimeout(() => { if (!ready) switchToFallback(); }, 5000);
 
 function applySky() {
   try {

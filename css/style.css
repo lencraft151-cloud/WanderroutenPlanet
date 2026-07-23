@@ -272,7 +272,7 @@ body.sheet-dragging .gps-chip { transition: none; }
   position: absolute;
   right: 12px;
   bottom: calc(var(--sheet-h) + 52px);
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
   z-index: 1000; transition: bottom 0.25s ease;
 }
 body.sheet-dragging .map-fabs { transition: none; }
@@ -667,15 +667,16 @@ select#loopKm, .field-row select {
   .icon-btn, .compass { width: 33px; height: 33px; font-size: 0.92rem; }
 }
 
-/* Werkzeug-Cluster: nie über den Bildschirm hinauswachsen – bei vielen Knöpfen
-   bzw. niedrigen Schirmen scrollbar, damit jeder Knopf erreichbar bleibt. */
+/* Offener Werkzeug-Cluster als kompaktes 2-Spalten-Raster: nur halb so hoch wie
+   eine Spalte, sitzt im unteren Kartenbereich und verschwindet daher NICHT hinter
+   der Suchleiste/Kopfzeile – alle Werkzeuge sind immer sichtbar. */
 .tool-cluster.open {
-  max-height: calc(100dvh - var(--topbar-h) - 150px);
-  overflow-y: auto; overflow-x: hidden;
-  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-  padding: 2px; border-radius: 26px;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 10px;
+  justify-items: end; align-items: center;
 }
-.tool-cluster.open::-webkit-scrollbar { display: none; }
+@media (max-width: 899px) { .tool-cluster.open { gap: 8px; } }
 
 /* Querformat / niedrige Schirme: Steuerung kompakter, damit unten nichts
    abgeschnitten wird und alle Knöpfe erreichbar bleiben. */

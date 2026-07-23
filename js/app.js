@@ -1699,6 +1699,8 @@ let mapIsReady = false;
 mapView.onReady(() => { mapIsReady = true; const me = $('mapError'); if (me) me.classList.add('hidden'); });
 // Wenn die 3D-Vektorkarte klemmt, springt automatisch eine Raster-Karte ein.
 mapView.onMapFallback(() => showToast(t('toast.mapFallback'), { duration: 5000 }));
+// Rendert auch die Raster-Karte nichts (leere/schwarze Karte) → Fehler zeigen.
+mapView.onMapBlank(() => { const me = $('mapError'); if (me) me.classList.remove('hidden'); });
 $('mapErrorReload').addEventListener('click', () => window.location.reload());
 // Letztes Netz: rendert nach 14 s gar nichts (auch der Raster-Fallback nicht),
 // sichtbare Fehlermeldung mit Neu-laden-Knopf statt weißer Fläche.
