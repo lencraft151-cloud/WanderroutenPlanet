@@ -506,7 +506,7 @@ function recenterOnMe() {
   if (lastPosition) {
     mapView.followTo(
       lastPosition.coords.latitude, lastPosition.coords.longitude,
-      { zoom: Math.max(mapView.getZoom(), 15), bearing: navMode ? lastHeading : 0 }
+      { zoom: Math.max(mapView.getZoom(), 15), bearing: navMode ? effectiveHeading() : 0 }
     );
   }
   updateRecenterChip();
@@ -593,13 +593,22 @@ sensors.onPosition((pos) => {
   lastPosition = pos;
   lastPositionTime = Date.now();
   if (onNextFix.length) { const cbs = onNextFix; onNextFix = []; cbs.forEach((fn) => { try { fn(); } catch {} }); }
-  const { latitude, longitude, accuracy, speed, altitude } = pos.coords;
+  const { latitude, longitude, accuracy, speed, altitude, heading: gpsHeading } = pos.coords;
   mapView.updatePosition(latitude, longitude, accuracy);
   mapView.setPositionLabel(getOwnName());
 
+  // Bewegungsrichtung aus dem GPS übernehmen, wenn man wirklich geht (> ~1,5 m/s
+  // bzw. 5 km/h ist zu schnell fürs Wandern – ab 0,8 m/s ist der Kurs brauchbar).
+  // Das ist im Gehen deutlich zuverlässiger als der Magnetkompass.
+  if (gpsHeading != null && !Number.isNaN(gpsHeading) && speed != null && speed > 0.8) {
+    lastGpsCourse = ((gpsHeading % 360) + 360) % 360;
+    lastGpsCourseTime = Date.now();
+    applyHeading(lastGpsCourse);
+  }
+
   if (follow) {
     const zoom = hadFirstFix ? mapView.getZoom() : 15;
-    mapView.followTo(latitude, longitude, { zoom, bearing: navMode ? lastHeading : undefined });
+    mapView.followTo(latitude, longitude, { zoom, bearing: navMode ? effectiveHeading() : undefined });
   } else if (autoCenterPending) {
     autoCenterPending = false;
     mapView.setView(latitude, longitude, Math.max(mapView.getZoom(), 14));
@@ -628,7 +637,7 @@ sensors.onPosition((pos) => {
     acc: accuracy != null ? Math.round(accuracy) : null,
     alt: altitude != null ? Math.round(altitude) : null,
     speed: speed != null && !Number.isNaN(speed) ? speed : null,
-    heading: lastHeading,
+    heading: effectiveHeading(),
     ts: Date.now(),
   };
   if (share.isSharing()) share.publishPosition(outPos);
@@ -693,25 +702,45 @@ async function fetchTerrainAltitude(lat, lon) {
 let roseRotation = 0;
 let lastHeading = null;
 let gotCompassData = false;
+let lastGpsCourse = null;     // Kurs aus der GPS-Bewegung (zuverlässiger beim Gehen)
+let lastGpsCourseTime = 0;
+
+// Beim Gehen ist der GPS-Kurs deutlich verlässlicher als das Magnetometer
+// (das durch Metall, Handyhülle oder fehlende Kalibrierung stark abweichen kann).
+// Deshalb: in Bewegung den GPS-Kurs bevorzugen, im Stehen den Kompass.
+function effectiveHeading() {
+  if (lastGpsCourse != null && Date.now() - lastGpsCourseTime < 10000) return lastGpsCourse;
+  return lastHeading;
+}
+
+// Setzt Kompassrose, Positions-Kegel und (im Navi-Modus) die Kartendrehung.
+function applyHeading(heading, { fromCompass = false } = {}) {
+  if (heading == null || Number.isNaN(heading)) return;
+  if (fromCompass) {
+    if (lastHeading === null) {
+      roseRotation = -heading;
+    } else {
+      let delta = heading - lastHeading;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      roseRotation -= delta;
+    }
+    lastHeading = heading;
+    $('compassText').classList.remove('hidden');
+    $('compassRose').style.transform = `rotate(${roseRotation}deg)`;
+    $('compassText').textContent = `${String(Math.round(heading)).padStart(3, '0')}° ${cardinal(heading)}`;
+  }
+  const eff = effectiveHeading();
+  if (eff == null) return;
+  mapView.setPositionHeading(eff);
+  // Navigations-Modus: Karte in Blickrichtung drehen (Heading-Up).
+  if (navMode) mapView.setBearing(eff);
+  updateNav();
+}
 
 function handleHeading(heading) {
   gotCompassData = true;
-  if (lastHeading === null) {
-    roseRotation = -heading;
-  } else {
-    let delta = heading - lastHeading;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    roseRotation -= delta;
-  }
-  lastHeading = heading;
-  $('compassText').classList.remove('hidden');
-  $('compassRose').style.transform = `rotate(${roseRotation}deg)`;
-  $('compassText').textContent = `${String(Math.round(heading)).padStart(3, '0')}° ${cardinal(heading)}`;
-  mapView.setPositionHeading(heading);
-  // Navigations-Modus: Karte in Blickrichtung drehen (Heading-Up).
-  if (navMode) mapView.setBearing(heading);
-  updateNav();
+  applyHeading(heading, { fromCompass: true });
 }
 
 // ---------- Navigations-Modus (Heading-Up) ----------
@@ -734,6 +763,13 @@ $('btnNav').addEventListener('click', async () => {
       navHintShown = true;
       showToast('💡 Abbiege-Ansagen („in 150 m rechts …") gibt es in der WanderPlan-App.', { duration: 6000 });
     }
+    // Ehrlich bleiben: Liefert das Gerät keinen echten Nordbezug, wird die Karte
+    // NICHT willkürlich gedreht – sonst zeigt sie in eine falsche Richtung.
+    setTimeout(() => {
+      if (navMode && !sensors.compassTrustworthy() && lastGpsCourse == null) {
+        showToast(t('toast.noCompass'), { duration: 5000 });
+      }
+    }, 3000);
     updateTurnByTurn();
   } else {
     mapView.setBearing(0);
@@ -754,11 +790,18 @@ function nativeNotify(title, body) {
   try { if (window.WanderPlanNative && typeof WanderPlanNative.notify === 'function') WanderPlanNative.notify(title, body); } catch {}
 }
 
-let maneuvers = [];   // [{ at: MeterAbStart, dir: 'links'|'rechts' }]
+let maneuvers = [];   // [{ at: MeterAbStart, dir, angle, turn }]
 let routeCum = [];    // kumulierte Distanz je Stützpunkt
 let lastTurnKey = null;
 
-// Abzweigungen aus der Routen-Geometrie ableiten (grobe, aber nützliche Hinweise).
+const OFF_ROUTE_M = 60;      // ab hier gilt man als „nicht auf der Route"
+const LOOK_M = 20;           // Blick nach vorn/hinten für die Richtungsbestimmung
+
+// Abzweigungen aus der Routen-Geometrie ableiten.
+// WICHTIG: Nicht aus benachbarten Stützpunkten – Routen-Geometrie ist sehr dicht
+// (Punkte im Meterabstand), dort erzeugt schon leichtes Schlängeln scheinbare
+// „Abbiegungen" (falsche Ansagen). Stattdessen wird die Richtung über je ~20 m
+// vor und hinter dem Punkt gemittelt; das ergibt echte Abzweigungen.
 function buildManeuvers(coords) {
   maneuvers = [];
   routeCum = [0];
@@ -766,16 +809,67 @@ function buildManeuvers(coords) {
   for (let i = 1; i < coords.length; i++) {
     routeCum[i] = routeCum[i - 1] + haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
   }
+  const total = routeCum[routeCum.length - 1];
   for (let i = 1; i < coords.length - 1; i++) {
-    const b1 = bearing(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
-    const b2 = bearing(coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]);
+    if (routeCum[i] < LOOK_M || total - routeCum[i] < LOOK_M) continue; // zu nah an Start/Ziel
+    let j = i; while (j > 0 && routeCum[i] - routeCum[j] < LOOK_M) j--;
+    let k = i; while (k < coords.length - 1 && routeCum[k] - routeCum[i] < LOOK_M) k++;
+    const b1 = bearing(coords[j][0], coords[j][1], coords[i][0], coords[i][1]);
+    const b2 = bearing(coords[i][0], coords[i][1], coords[k][0], coords[k][1]);
     const d = ((b2 - b1 + 540) % 360) - 180;
-    if (Math.abs(d) >= 35) {
-      if (!maneuvers.length || routeCum[i] - maneuvers[maneuvers.length - 1].at > 25) {
-        maneuvers.push({ at: routeCum[i], dir: d > 0 ? 'rechts' : 'links' });
-      }
+    if (Math.abs(d) < 30) continue; // leichte Kurve ist keine Abbiegung
+    const m = {
+      at: routeCum[i],
+      angle: d,
+      dir: d > 0 ? 'right' : 'left',                                    // sprachneutral
+      turn: Math.abs(d) >= 110 ? 'sharp' : (Math.abs(d) < 50 ? 'slight' : ''),
+    };
+    const prev = maneuvers[maneuvers.length - 1];
+    // Dicht beieinander liegende Punkte gehören zur selben Abbiegung → den
+    // markantesten Winkel behalten, statt mehrfach anzusagen.
+    if (prev && m.at - prev.at < 30) {
+      if (Math.abs(m.angle) > Math.abs(prev.angle)) maneuvers[maneuvers.length - 1] = m;
+    } else {
+      maneuvers.push(m);
     }
   }
+}
+
+// Nächster Punkt auf der Route (Projektion auf die SEGMENTE, nicht nur auf die
+// Stützpunkte). Liefert Abstand zur Strecke und die zurückgelegte Strecke bis
+// dorthin. Nötig, weil Routen-Segmente hundert Meter lang sein können – dann
+// wäre man mitten auf dem Weg trotzdem weit vom nächsten Stützpunkt entfernt.
+function nearestOnRoute(coords, lat, lon) {
+  let dist = Infinity, along = 0;
+  const mPerDegLat = 111320;
+  const mPerDegLon = 111320 * Math.cos(lat * Math.PI / 180);
+  const px = lon * mPerDegLon, py = lat * mPerDegLat;
+  for (let i = 1; i < coords.length; i++) {
+    const ax = coords[i - 1][1] * mPerDegLon, ay = coords[i - 1][0] * mPerDegLat;
+    const bx = coords[i][1] * mPerDegLon, by = coords[i][0] * mPerDegLat;
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let tt = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+    tt = Math.max(0, Math.min(1, tt));
+    const cx = ax + dx * tt, cy = ay + dy * tt;
+    const d = Math.hypot(px - cx, py - cy);
+    if (d < dist) {
+      dist = d;
+      const segLen = routeCum[i] - routeCum[i - 1];
+      along = routeCum[i - 1] + segLen * tt;
+    }
+  }
+  return { dist, along };
+}
+
+// Ansage-Stufen je Abbiegung: einmal beim Ankündigen, dann bei ~350 m, ~120 m
+// und direkt davor. Pro Stufe genau EINE Ansage – dadurch keine Wiederholungen
+// bei jedem GPS-Update, aber rechtzeitige Hinweise.
+function announceBucket(dist) {
+  if (dist <= 30) return 'now';
+  if (dist <= 120) return 'near';
+  if (dist <= 350) return 'far';
+  return 'ahead';
 }
 
 function updateTurnByTurn() {
@@ -785,25 +879,47 @@ function updateTurnByTurn() {
   }
   const coords = currentRoute.coords;
   const la = lastPosition.coords.latitude, lo = lastPosition.coords.longitude;
-  let best = 0, bestD = Infinity;
-  for (let i = 0; i < coords.length; i++) {
-    const d = haversine(la, lo, coords[i][0], coords[i][1]);
-    if (d < bestD) { bestD = d; best = i; }
+  // Abstand zur STRECKE (Segmente), nicht nur zu den Stützpunkten: Bei weit
+  // auseinanderliegenden Punkten stünde man sonst mitten auf dem Weg und würde
+  // trotzdem als „nicht auf der Route" gelten.
+  const snap = nearestOnRoute(coords, la, lo);
+  const bestD = snap.dist;
+
+  // Weit weg von der Route → keine erfundenen Abbiegehinweise, sondern der
+  // ehrliche Hinweis, dass man nicht auf der Route ist.
+  if (bestD > OFF_ROUTE_M) {
+    const icon = '⚠️';
+    const title = t('nav.offRoute');
+    const body = t('nav.offRouteSub', { dist: fmtDistance(Math.round(bestD)) });
+    showTurn(icon, title, body);
+    if (lastTurnKey !== 'off') { lastTurnKey = 'off'; turnNotify(title, body); }
+    return;
   }
-  const along = routeCum[best];
-  const endDist = routeCum[routeCum.length - 1] - along;
-  const next = maneuvers.find((m) => m.at > along + 3);
-  let icon, title, body;
-  if (endDist < 30) { icon = '🏁'; title = 'Ziel erreicht'; body = 'Du bist am Ziel angekommen.'; }
-  else if (next) {
+
+  const along = snap.along;
+  const endDist = Math.max(0, routeCum[routeCum.length - 1] - along);
+  const next = maneuvers.find((m) => m.at > along + 5);
+  let icon, title, body, key;
+  if (endDist < 30) {
+    icon = '🏁'; title = t('nav.arrived'); body = t('nav.arrivedSub'); key = 'end';
+  } else if (next) {
     const dd = Math.max(0, Math.round(next.at - along));
-    icon = next.dir === 'rechts' ? '➡️' : '⬅️';
-    title = `In ${fmtDistance(dd)} ${next.dir}`;
-    body = `Dann weiter Richtung Ziel (noch ${fmtDistance(endDist)}).`;
-  } else { icon = '⬆️'; title = 'Geradeaus'; body = `Noch ${fmtDistance(endDist)} bis zum Ziel.`; }
+    icon = next.dir === 'right' ? '➡️' : '⬅️';
+    // „scharf/leicht rechts" in der jeweiligen Sprache zusammensetzen.
+    const dirText = (next.turn ? t('dir.' + next.turn) + ' ' : '') + t('dir.' + next.dir);
+    title = dd <= 25 ? t('nav.turnNow', { dir: dirText }) : t('nav.turnIn', { dist: fmtDistance(dd), dir: dirText });
+    body = t('nav.thenTo', { dist: fmtDistance(endDist) });
+    // Ansage-Schlüssel aus Abbiegung + Entfernungs-Stufe: So wird pro Abbiegung
+    // nur einmal je Stufe angesagt. (Vorher enthielt der Schlüssel die exakte
+    // Entfernung – sie ändert sich bei JEDEM GPS-Update, dadurch kam bei jedem
+    // Schritt eine neue, oft widersprüchliche Ansage.)
+    key = `${Math.round(next.at)}:${announceBucket(dd)}`;
+  } else {
+    icon = '⬆️'; title = t('nav.straight'); body = t('nav.toGo', { dist: fmtDistance(endDist) });
+    key = 'straight';
+  }
   showTurn(icon, title, body);
-  // Ansage (Benachrichtigung) nur bei Wechsel, damit es nicht spammt.
-  if (title !== lastTurnKey) { lastTurnKey = title; turnNotify(title, body); }
+  if (key && key !== lastTurnKey) { lastTurnKey = key; turnNotify(title, body); }
 }
 
 function showTurn(icon, title, sub) {

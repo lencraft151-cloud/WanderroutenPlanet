@@ -30,7 +30,11 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **🧭 Abbiege-Navigation** im Navigations-Modus: Hinweise „in 150 m rechts …"
   mit System-Benachrichtigungen – in der **Android-App** und in der
   **installierten iPhone-/PWA-App** (Benachrichtigungen laufen dort über den
-  Service Worker, wie es iOS ab 16.4 verlangt).
+  Service Worker, wie es iOS ab 16.4 verlangt). Die Abbiegungen werden über
+  ~20 m **geglättet** (keine Phantom-Abzweigungen aus dichter Geometrie), jede
+  Abbiegung wird **je Entfernungsstufe nur einmal** angesagt (kein Spam), und
+  abseits der Route kommt ehrlich **„Nicht auf der Route"** statt erfundener
+  Richtungen.
 - **🔊 Sprach-Navigation**: Abbiegehinweise & Warnungen werden **laut vorgelesen**
   (Web Speech API, deutsch, offline, ohne Key) – per 🔊-Knopf im Werkzeug-Menü.
 - **🗺 Kartenstil-Umschalter**: neben der **3D-Karte** auch **Topo-Wanderkarte**
@@ -66,7 +70,11 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   **„Zurück zu mir"**-Knopf erscheint, sobald du die Karte wegschiebst. Der
   Ortungs-Knopf schaltet das GPS nie versehentlich aus (langer Druck beendet es).
 - **🧭 Navigations-Modus (Heading-Up)**: die Karte dreht sich in deine
-  Blickrichtung, dein blauer Punkt bleibt mittig – wie im Auto-Navi.
+  Blickrichtung, dein blauer Punkt bleibt mittig – wie im Auto-Navi. Die
+  Ausrichtung stimmt mit der Realität überein: **Bildschirmdrehung** wird
+  herausgerechnet (Querformat!), nur Sensoren mit **echtem Nordbezug** werden
+  genutzt, das Magnetometer wird geglättet, und **beim Gehen zählt der
+  GPS-Kurs** (zuverlässiger als der Magnetkompass).
 - **🔎 Ortssuche mit Nähe-Bezug**: Live-Vorschläge beim Tippen, sortiert nach
   Entfernung (mit Kategorie-Icon und Luftlinie) und mit **Suchverlauf**.
 - **🧾 Wegpunkt-Liste**: alle Stopps umsortieren, löschen, benennen und
