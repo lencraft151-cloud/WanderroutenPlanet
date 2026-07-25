@@ -13,7 +13,18 @@ const STYLES = {
 };
 const DEM_TILES = 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png';
 
-let currentTheme = 'light';
+// Theme BEVOR die Karte gebaut wird bestimmen. Sonst wurde die Karte erst hell
+// erzeugt und unmittelbar danach per setStyle auf dunkel umgeschaltet – dieses
+// Umschalten mitten im Laden des ersten Styles konnte den Renderer aus dem Tritt
+// bringen („Attempting to run()") und die Karte schwarz lassen.
+let currentTheme = (() => {
+  try {
+    const s = localStorage.getItem('wanderplan.theme');
+    if (s === 'dark' || s === 'light') return s;
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+  } catch { /* egal */ }
+  return 'light';
+})();
 let buildings3dOn = true;
 let gradeVisible = false;
 
@@ -147,11 +158,30 @@ map.on('style.load', () => {
   ready = true;
   pending.splice(0).forEach((fn) => fn());
   readyOnce.splice(0).forEach((fn) => fn());
+  if (!fallbackActive) verifyTilesRender(); // „Style da, aber nichts sichtbar" abfangen
+});
+
+// Hat jemals eine echte Kartenkachel geladen? Genau daran hängt es, ob wirklich
+// etwas zu SEHEN ist. (Der Style kann „geladen" melden, während die Kacheln nie
+// ankommen – z. B. wenn der Vektor-Worker auf dem Gerät nicht startet. Dann
+// bleibt die Karte schwarz, obwohl die App sonst normal läuft.)
+let anyTileLoaded = false;
+map.on('data', (e) => {
+  if (e && e.dataType === 'source' && e.tile) anyTileLoaded = true;
 });
 
 map.on('error', (e) => {
   if (e && e.error) console.warn('MapLibre:', e.error.message || e.error);
 });
+
+// Nach dem Laden prüfen, ob tatsächlich Kacheln ankommen. Wenn nach 8 s KEINE
+// einzige Kachel geladen wurde, rendert die Vektorkarte nichts → auf die
+// Raster-Karte umschalten, damit man in jedem Fall eine Karte sieht.
+function verifyTilesRender() {
+  setTimeout(() => {
+    if (!fallbackActive && !anyTileLoaded) switchToFallback();
+  }, 8000);
+}
 // WebGL-Kontext verloren (iOS knausert mit GPU-Kontexten) → Raster versuchen.
 try {
   map.getCanvas().addEventListener('webglcontextlost', () => { switchToFallback(); }, { once: true });

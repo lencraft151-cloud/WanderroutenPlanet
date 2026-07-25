@@ -61,6 +61,10 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   Quelle langsam/aus, Netz- oder Worker-Fehler –, schaltet die App nach wenigen
   Sekunden **automatisch auf eine zuverlässige Raster-Karte** (Esri World Topo)
   um; Raster-Kacheln sind reine Bilder und funktionieren auch ohne Vektor-Worker.
+  Geprüft wird dabei nicht nur, ob der *Style* geladen hat, sondern ob wirklich
+  **Kacheln ankommen** – sonst bliebe die Karte schwarz, obwohl die App normal
+  aussieht. Das Farbschema (hell/dunkel) steht **vor** dem Kartenaufbau fest,
+  damit kein Style-Wechsel mitten ins Laden fällt.
   Auch MapLibre selbst hat einen **CDN-Fallback** (jsDelivr, falls unpkg klemmt).
   Rendert gar nichts, erscheint statt weißer Fläche „Karte konnte nicht geladen
   werden – Neu laden".
