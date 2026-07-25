@@ -537,12 +537,28 @@ export function updatePosition(lat, lng, accuracy) {
   whenReady(() => setData('pos-acc', accuracy ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [geoCircle(lat, lng, accuracy)] } }] } : EMPTY));
 }
 
+// Blickrichtungs-Kegel am eigenen Punkt. WICHTIG: relativ zur Kartendrehung
+// zeichnen. Im Navigations-Modus ist die Karte selbst schon in Blickrichtung
+// gedreht – würde der Kegel zusätzlich um den absoluten Kurs gedreht, zeigte er
+// doppelt (also falsch). heading − Kartenpeilung ergibt die korrekte Richtung
+// auf dem Bildschirm (im Navi-Modus: immer nach oben).
+let lastHeadingDeg = null;
+function applyHeadingRotation() {
+  if (!posEl || lastHeadingDeg == null) return;
+  const cone = posEl.querySelector('.pos-cone');
+  if (cone) cone.style.transform = `rotate(${lastHeadingDeg - map.getBearing()}deg)`;
+}
+
 export function setPositionHeading(deg) {
   if (!posEl) return;
+  lastHeadingDeg = deg;
   posEl.classList.add('has-heading');
-  const cone = posEl.querySelector('.pos-cone');
-  if (cone) cone.style.transform = `rotate(${deg}deg)`;
+  applyHeadingRotation();
 }
+
+// Dreht sich die Karte, muss der Kegel nachgeführt werden (sonst „klebt" er
+// an der alten Bildschirmrichtung).
+map.on('rotate', applyHeadingRotation);
 
 export function setPositionLabel(name) {
   if (!posEl) return;
