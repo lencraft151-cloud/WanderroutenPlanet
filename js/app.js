@@ -2095,6 +2095,22 @@ if (isInstalledApp()) {
   document.body.classList.add('installed-app');
   const w = document.querySelector('.app-menu-wrap');
   if (w) w.style.display = 'none';
+  // Externe Links würden im iOS-Vollbildmodus die App ERSETZEN (man landet im
+  // Browser und kommt nur über den App-Wechsler zurück). Deshalb extern öffnen –
+  // die App selbst bleibt im Hintergrund erhalten, wie bei einer echten App.
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href') || '';
+    if (/^(tel:|mailto:|sms:)/i.test(href)) return; // sollen das System öffnen
+    try {
+      const url = new URL(a.href, location.href);
+      if (url.origin !== location.origin) {
+        e.preventDefault();
+        window.open(url.href, '_blank', 'noopener');
+      }
+    } catch { /* ungültige URL – normal behandeln */ }
+  });
 }
 
 // In der installierten App das Standort-Teilen sofort einsatzbereit machen.
@@ -2258,43 +2274,64 @@ async function generateLoop() {
     : mapView.getCenter();
   switchToTab('route');
   ensureExpanded();
-  setRouteStatus('Rundtour über Wege wird gesucht …');
-  showToast(`Rundtour ~${km} km wird gesucht …`, { duration: 3000 });
-  const profile = $('profileSelect').value;
+  setRouteStatus(t('loop.searching'));
+  // Art der Tour → Routing-Profil + Bewertung.
+  //  city   = Stadt/feste Wege  → „trekking" bevorzugt befestigte Wege
+  //  flat   = nicht über Berge  → Höhenmeter werden stark abgewertet
+  //  nature = ruhige Pfade      → Wanderprofil, Höhenmeter egal
+  const kind = ($('loopStyle') && $('loopStyle').value) || 'hiking';
+  const profile = (kind === 'city' || kind === 'flat') ? 'trekking' : 'hiking-mountain';
+  const ascentPenalty = kind === 'flat' ? 1.2 : (kind === 'city' ? 0.5 : 0);
   const reqId = ++routeRequestId;
-  let best = null;
+  const targetM = km * 1000;
+  let best = null; let bestScore = Infinity;
+  // Radius wird nach jedem Versuch nachgeregelt: Ist die gefahrene Strecke zu
+  // lang/kurz, wird der Ring proportional kleiner/größer gezogen. So trifft die
+  // Rundtour die gewünschte Länge wirklich – statt nur grob geschätzt zu sein.
+  let radius = loopRadiusFor(targetM, 1.35);
   try {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const pts = makeLoop(c.lat, c.lng, km, attempt);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const pts = makeLoopRing(c.lat, c.lng, radius, attempt);
       const result = await calculateRoute(pts, profile);
       if (reqId !== routeRequestId) { loopBusy = false; return; } // inzwischen etwas anderes
-      if (result && !result.fallback && isLoopClosed(result.coords)) { best = { pts, result }; break; }
-      if (result && !best) best = { pts, result }; // Notnagel merken
+      if (!result || result.fallback || !result.coords || result.coords.length < 3) continue;
+      const coords = closeLoopCoords(result.coords);
+      const stats = computeStats(coords);
+      const len = stats.distance;
+      const overlap = retraceRatio(coords);          // Anteil Hin-und-zurück
+      const lenErr = Math.abs(len - targetM) / targetM;
+      // Höhenmeter je Kilometer – für „flach/Stadt" ein Abwertungskriterium.
+      const climbPerKm = (stats.ascent || 0) / Math.max(len / 1000, 0.1);
+      // Bewertung: Längenfehler + kräftiger Malus für Stichwege/Rückwege
+      // (+ optional Höhenmeter, je nach gewählter Art der Tour).
+      const score = lenErr + overlap * 1.5 + ascentPenalty * (climbPerKm / 100);
+      if (score < bestScore) { bestScore = score; best = { pts, coords, len, overlap, lenErr, climbPerKm }; }
+      // Gut genug: Länge ±12 %, kaum Rückwege und (bei „flach") wenig Anstieg.
+      if (lenErr <= 0.12 && overlap <= 0.15 && (!ascentPenalty || climbPerKm < 25)) break;
+      // Radius nachregeln (gedämpft, damit es nicht überschwingt).
+      const factor = Math.min(1.6, Math.max(0.6, targetM / Math.max(len, 1)));
+      radius *= (1 + (factor - 1) * 0.8);
     }
   } catch { /* unten behandelt */ }
   if (reqId !== routeRequestId) { loopBusy = false; return; }
-  if (best && !best.result.fallback) {
+  if (best) {
     wpNames = [];
     mapView.setWaypoints(best.pts, { silent: true });
-    const coords = closeLoopCoords(best.result.coords); // 100 % geschlossene Schleife
+    const coords = best.coords; // bereits 100 % geschlossene Schleife
     showRoute({ coords, stats: computeStats(coords), fallback: false, source: 'planned' });
     mapView.snapWaypointsToRoute(coords);
     renderWaypointList();
-    setRouteStatus(null);
-    showToast(`🔄 Rundtour ~${km} km erzeugt.`, { duration: 3500 });
+    // Ehrlich sagen, wie lang die Tour wirklich geworden ist.
+    const realKm = (best.len / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+    setRouteStatus(best.overlap > 0.25 ? t('loop.someBacktrack') : null, true);
+    showToast(t('loop.done', { km: realKm }), { duration: 3500 });
   } else {
-    setRouteStatus('Keine Rundtour über Wege gefunden – anderen Startpunkt oder eine andere Länge versuchen.', true);
-    showToast('Keine echte Rundtour gefunden – versuch einen anderen Startpunkt oder eine andere Länge.', { error: true, duration: 5000 });
+    setRouteStatus(t('loop.none'), true);
+    showToast(t('loop.none'), { error: true, duration: 5000 });
   }
   loopBusy = false;
 }
 
-// Ist die Route (fast) geschlossen? Start und Ende nah beieinander.
-function isLoopClosed(coords) {
-  if (!coords || coords.length < 3) return false;
-  const a = coords[0]; const b = coords[coords.length - 1];
-  return haversine(a[0], a[1], b[0], b[1]) < 80;
-}
 // Schließt die Route exakt: hängt den Startpunkt ans Ende, falls eine Lücke bleibt.
 function closeLoopCoords(coords) {
   if (!coords || coords.length < 3) return coords;
@@ -2303,14 +2340,48 @@ function closeLoopCoords(coords) {
   return coords;
 }
 
-// Rundweg-Wegpunkte im Ring um den Start; attempt variiert Drehung/Radius, damit
+const LOOP_N = 6; // Ecken des Rings – ergibt eine runde Schleife
+
+// Ring-Radius für eine Ziel-Länge (Umfang eines n-Ecks, Wege sind länger als
+// die Luftlinie → pathFactor).
+function loopRadiusFor(targetM, pathFactor) {
+  const perimeter = targetM / pathFactor;
+  return perimeter / (2 * LOOP_N * Math.sin(Math.PI / LOOP_N));
+}
+
+// Anteil der Route, der sich selbst wiederholt (Hin- und Rückweg auf demselben
+// Pfad = „Stichweg"). 0 = saubere Schleife, hohe Werte = viel Zurücklaufen.
+// Gemessen wird, wie viele Stichproben nah an einem NICHT benachbarten
+// Routenabschnitt liegen.
+function retraceRatio(coords) {
+  if (!coords || coords.length < 8) return 0;
+  const STEP = Math.max(1, Math.floor(coords.length / 120)); // ~120 Stichproben
+  const NEAR = 25;    // m – so nah gilt als „derselbe Weg"
+  const SKIP = 600;   // m – Abstand entlang der Route, ab dem es kein Nachbar mehr ist
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++) {
+    cum[i] = cum[i - 1] + haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+  }
+  const total = cum[cum.length - 1] || 1;
+  let hits = 0, n = 0;
+  for (let i = 0; i < coords.length; i += STEP) {
+    n++;
+    for (let j = 0; j < coords.length; j += STEP) {
+      const dAlong = Math.abs(cum[i] - cum[j]);
+      // Nachbarschaft entlang der Route überspringen – und den Ringschluss
+      // (Start≈Ziel) nicht als Rückweg werten.
+      if (dAlong < SKIP || total - dAlong < SKIP) continue;
+      if (haversine(coords[i][0], coords[i][1], coords[j][0], coords[j][1]) < NEAR) { hits++; break; }
+    }
+  }
+  return n ? hits / n : 0;
+}
+
+// Rundweg-Wegpunkte im Ring um den Start; attempt variiert die Drehung, damit
 // bei einem misslungenen Versuch eine andere Schleife probiert werden kann.
-function makeLoop(lat, lng, km, attempt = 0) {
-  const n = 6;                              // rundere Schleife
-  const pathFactor = 1.35 + attempt * 0.1;  // reale Wege sind länger als das Polygon
-  const perimeter = (km * 1000) / pathFactor;
-  const radius = perimeter / (2 * n * Math.sin(Math.PI / n));
-  const start = (attempt * 53 + Math.random() * 360) % 360;
+function makeLoopRing(lat, lng, radius, attempt = 0) {
+  const n = LOOP_N;
+  const start = (attempt * 61 + Math.random() * 30) % 360;
   const pts = [{ lat, lng }];
   for (let i = 0; i < n; i++) {
     const brng = (start + i * (360 / n)) * Math.PI / 180;

@@ -693,6 +693,22 @@ select#loopKm, .field-row select {
 /* In der installierten App ist der Store-/Download-Knopf überflüssig. */
 body.installed-app .app-menu-wrap { display: none !important; }
 
+/* Installierte App soll sich wie eine ECHTE App anfühlen (nicht wie eine
+   Webseite): kein Gummiband-Scrollen der ganzen Seite, keine Text-Auswahl per
+   Langdruck, kein blaues Antipp-Blinken, keine Lupe/Kontextmenü auf Bildern. */
+body.installed-app {
+  overscroll-behavior: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Eingabefelder müssen natürlich weiterhin auswählbar bleiben. */
+body.installed-app input,
+body.installed-app textarea,
+body.installed-app [contenteditable] {
+  -webkit-user-select: text; user-select: text;
+}
+
 /* ===================== Desktop ===================== */
 @media (min-width: 900px) {
   main { flex-direction: row; }
