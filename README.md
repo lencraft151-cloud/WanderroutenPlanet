@@ -16,9 +16,12 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **🔎 Ortssuche**: Ort, Berg oder Hütte eingeben – die Karte fliegt hin
   (OpenStreetMap-Nominatim).
 - **🤖 Automatischer Routenplaner**: Route von deinem Standort zum gesuchten
-  oder angetippten Ziel – oder eine **Rundtour** in Wunschlänge. Die Rundtour ist
-  **garantiert geschlossen** (endet exakt am Start) und probiert mehrere Varianten,
-  bis eine echte Wege-Schleife herauskommt (keine Luftlinie).
+  oder angetippten Ziel – oder eine **Rundtour** in Wunschlänge (**1–30 km**,
+  inkl. kurzer 1/2/3/4-km-Runden). Die Rundtour ist **garantiert geschlossen**
+  (endet exakt am Start), der Ring wird **automatisch nachgeregelt, bis die Länge
+  wirklich passt**, und Varianten mit **Stichwegen/Hin-und-zurück** werden
+  aussortiert. Dazu wählbar: **Art der Tour** – Wandern (Standard), **Stadt (nur
+  feste Wege)**, **Flach (nicht über Berge)** oder **Natur (ruhige Pfade)**.
 - **📍 Punkte genau auf dem Weg**: gesetzte Wegpunkte werden nach der Berechnung
   **auf die echte Route gezogen** – sie sitzen exakt auf Wegen/Straßen, nicht daneben.
 - **🥾 Fertige Wanderwege**: „Wanderwege suchen" listet **vorhandene Touren aus
@@ -41,6 +44,10 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
   (OpenTopoMap) und **Satellitenbild** (Esri) – keyless, per 🗺-Knopf durchschalten.
 - **🆘 SOS-/Notfallmodus**: zeigt deine **Koordinaten** groß mit **Höhe** und Ort,
   **teilt den Standort** (Karten-Link) und bietet **Notruf 112** – ein Tipp aufs 🆘.
+- **🍎 Wie eine echte App auf dem iPhone**: eigene **Startbildschirme** (hell &
+  dunkel, für alle iPhone-Größen) statt weißer Fläche beim Start, **kein
+  Gummiband-Scrollen**, keine Text-Auswahl/Lupe per Langdruck, kein blaues
+  Antipp-Blinken – und externe Links ersetzen die App nicht mehr.
 - **🍎 iPhone-Installation**: WanderPlan als Vollbild-App aufs iPhone – per
   **Installationsprofil** (der Service Worker liefert das Profil mit dem korrekten
   Dateityp aus) oder klassisch **„Zum Home-Bildschirm"** in Safari. Siehe
