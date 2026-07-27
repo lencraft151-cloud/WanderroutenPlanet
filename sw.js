@@ -1,6 +1,6 @@
 // WanderPlan Service Worker – App-Shell-Cache für Offline-Start und PWA.
 
-const CACHE = 'wanderplan-v18';
+const CACHE = 'wanderplan-v19';
 
 const SHELL = [
   './',
@@ -48,7 +48,11 @@ self.addEventListener('message', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // Alte App-Caches aufräumen – den Kachel-Cache aber BEHALTEN, damit die
+      // Karte nach einem Update nicht komplett neu geladen werden muss.
+      .then((keys) => Promise.all(
+        keys.filter((k) => k !== CACHE && k !== TILE_CACHE).map((k) => caches.delete(k))
+      ))
       .then(() => self.clients.claim())
   );
 });
@@ -74,8 +78,14 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Alles Fremde – Kartenkacheln, Vektor-Style, DEM, CDN-Skripte, APIs –
-  // unangetastet ans Netz durchreichen (nie aus dem Cache).
+  // Kartenkacheln: aus einem EIGENEN, streng begrenzten Cache bedienen. Dadurch
+  // ist die Karte nach einem Neuladen sofort wieder da (kein Nachladen, kein
+  // Ruckeln), ohne den App-Cache zu belasten.
+  // Wichtig: schlägt irgendetwas fehl, wird IMMER normal aus dem Netz geladen –
+  // die Karte darf durch den Cache niemals kaputtgehen.
+  if (isTileRequest(url)) { event.respondWith(tileCacheFirst(req)); return; }
+
+  // Alles andere Fremde – Style, CDN-Skripte, APIs – unangetastet durchreichen.
   if (url.origin !== self.location.origin) return;
 
   // Eigene Dateien (HTML/JS/CSS): NETZWERK ZUERST. Damit kommen Updates SOFORT
@@ -84,6 +94,46 @@ self.addEventListener('fetch', (event) => {
   // dient nur noch als Offline-Reserve bzw. bei langsamer Verbindung (Timeout).
   event.respondWith(networkFirst(req));
 });
+
+// ---------- Kartenkachel-Cache (eigener, begrenzter Speicher) ----------
+const TILE_CACHE = 'wanderplan-tiles-v1';
+const TILE_LIMIT = 600; // grob 30–60 MB – genug für die Umgebung, schont iOS
+
+function isTileRequest(url) {
+  const h = url.hostname, p = url.pathname;
+  if (h.includes('tiles.openfreemap.org')) return /\.(pbf|png|jpg|webp)$/.test(p);
+  if (h.includes('elevation-tiles-prod')) return true;           // Höhenmodell
+  if (h.includes('opentopomap.org')) return true;                // Topo-Raster
+  if (h.includes('arcgisonline.com')) return /\/tile\//.test(p); // Satellit/Topo
+  return false;
+}
+
+// Ältestes zuerst löschen, sobald das Limit überschritten ist.
+async function trimTileCache(cache) {
+  try {
+    const keys = await cache.keys();
+    if (keys.length <= TILE_LIMIT) return;
+    const excess = keys.length - TILE_LIMIT;
+    for (let i = 0; i < excess; i++) await cache.delete(keys[i]);
+  } catch { /* egal */ }
+}
+
+// Cache zuerst (Kacheln ändern sich praktisch nie), sonst Netz + ablegen.
+async function tileCacheFirst(req) {
+  try {
+    const cache = await caches.open(TILE_CACHE);
+    const hit = await cache.match(req);
+    if (hit) return hit;
+    const res = await fetch(req);
+    if (res && res.status === 200) {
+      cache.put(req, res.clone()).then(() => trimTileCache(cache)).catch(() => {});
+    }
+    return res;
+  } catch {
+    // Cache-API nicht verfügbar/voll → ganz normal aus dem Netz.
+    return fetch(req);
+  }
+}
 
 function networkFirst(req) {
   return new Promise((resolve) => {
