@@ -55,6 +55,13 @@ Build-Schritt und ohne Frameworks. Installierbar als App (PWA).
 - **📱 Als installierte App erkannt**: läuft WanderPlan im Vollbild (Android-App,
   iPhone-Homescreen oder PWA), blendet es das Download-Menü aus, hält das
   Live-Standort-Teilen sofort bereit und darf Benachrichtigungen senden.
+- **⚡ Karte bleibt lokal gespeichert**: Kartenkacheln landen in einem eigenen,
+  begrenzten Speicher (max. ~600 Kacheln, ältere fliegen automatisch raus). Nach
+  einem **Neuladen ist die Karte sofort wieder da** – ohne erneutes Nachladen und
+  ohne Ruckeln; der Speicher übersteht auch ein App-Update. Der zuletzt
+  betrachtete **Ausschnitt** (Position, Zoom, Neigung) wird ebenfalls gemerkt und
+  beim Neuladen wiederhergestellt – bis die App wirklich geschlossen wird.
+  Schlägt der Speicher fehl, wird immer normal aus dem Netz geladen.
 - **🆕 Immer aktuell (Netzwerk zuerst)**: Der Service Worker holt die App-Dateien
   **online immer frisch vom Server** (Netzwerk zuerst, Cache nur als Offline-
   Reserve). So kommt jede neue Version sofort an – niemand bleibt mehr auf einer

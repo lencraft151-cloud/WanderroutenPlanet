@@ -61,13 +61,27 @@ function styleForCurrent() {
   return STYLES[currentTheme];
 }
 
+// Zuletzt gesehener Kartenausschnitt. sessionStorage passt hier genau: Er
+// überlebt das Neuladen der Seite, wird aber geleert, sobald die App wirklich
+// geschlossen wird. Dadurch startet ein Reload sofort an derselben Stelle
+// (kein Zurückspringen, kein erneutes Heranzoomen).
+const VIEW_KEY = 'wanderplan.view';
+function savedView() {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(VIEW_KEY) || 'null');
+    if (v && Number.isFinite(v.lng) && Number.isFinite(v.lat) && Number.isFinite(v.zoom)) return v;
+  } catch { /* egal */ }
+  return null;
+}
+const VIEW = savedView();
+
 export const map = new maplibregl.Map({
   container: 'map',
   style: styleForCurrent(),
-  center: [11.4041, 47.2692],
-  zoom: 12,
-  pitch: 55,
-  bearing: -12,
+  center: VIEW ? [VIEW.lng, VIEW.lat] : [11.4041, 47.2692],
+  zoom: VIEW ? VIEW.zoom : 12,
+  pitch: VIEW ? VIEW.pitch : 55,
+  bearing: VIEW ? VIEW.bearing : -12,
   maxPitch: 80,
   attributionControl: { compact: true },
   cooperativeGestures: false,
@@ -82,6 +96,21 @@ export const map = new maplibregl.Map({
   // leer/kaputt wirken, weil Kacheln sofort wieder verworfen werden.
   maxTileCacheSize: 512,
   collectResourceTiming: false,
+});
+
+// Ausschnitt merken (gedrosselt, damit das Speichern das Schwenken nicht bremst).
+let viewSaveTimer = null;
+map.on('moveend', () => {
+  clearTimeout(viewSaveTimer);
+  viewSaveTimer = setTimeout(() => {
+    try {
+      const c = map.getCenter();
+      sessionStorage.setItem(VIEW_KEY, JSON.stringify({
+        lng: +c.lng.toFixed(6), lat: +c.lat.toFixed(6),
+        zoom: +map.getZoom().toFixed(2), pitch: +map.getPitch().toFixed(1), bearing: +map.getBearing().toFixed(1),
+      }));
+    } catch { /* Speicher voll/privat – unkritisch */ }
+  }, 400);
 });
 
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
@@ -166,9 +195,13 @@ map.on('style.load', () => {
 // ankommen – z. B. wenn der Vektor-Worker auf dem Gerät nicht startet. Dann
 // bleibt die Karte schwarz, obwohl die App sonst normal läuft.)
 let anyTileLoaded = false;
-map.on('data', (e) => {
-  if (e && e.dataType === 'source' && e.tile) anyTileLoaded = true;
-});
+function onTileData(e) {
+  if (e && e.dataType === 'source' && e.tile) {
+    anyTileLoaded = true;
+    map.off('data', onTileData); // Aufgabe erfüllt – Handler wieder abhängen
+  }
+}
+map.on('data', onTileData);
 
 map.on('error', (e) => {
   if (e && e.error) console.warn('MapLibre:', e.error.message || e.error);
@@ -555,6 +588,8 @@ export function is3D() { return map.getPitch() >= 20; }
 let posMarker = null;
 let posEl = null;
 
+let lastAcc = null; // zuletzt gezeichneter Genauigkeitskreis
+
 export function updatePosition(lat, lng, accuracy) {
   if (!posMarker) {
     posEl = document.createElement('div');
@@ -564,7 +599,15 @@ export function updatePosition(lat, lng, accuracy) {
   } else {
     posMarker.setLngLat([lng, lat]);
   }
-  whenReady(() => setData('pos-acc', accuracy ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [geoCircle(lat, lng, accuracy)] } }] } : EMPTY));
+  // Genauigkeitskreis nur neu berechnen, wenn er sich sichtbar ändert. Vorher
+  // wurde bei JEDEM GPS-Update ein 49-Punkte-Polygon erzeugt und in die Karte
+  // geschoben – das kostete unnötig Rechenzeit und ließ die Karte ruckeln.
+  const accChanged = lastAcc == null || accuracy == null
+    || Math.abs((accuracy || 0) - lastAcc.acc) > 3
+    || Math.abs(lat - lastAcc.lat) > 0.00002 || Math.abs(lng - lastAcc.lng) > 0.00002;
+  if (!accChanged) return;
+  lastAcc = { lat, lng, acc: accuracy || 0 };
+  whenReady(() => setData('pos-acc', accuracy ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [geoCircle(lat, lng, accuracy, 32)] } }] } : EMPTY));
 }
 
 // Blickrichtungs-Kegel am eigenen Punkt. WICHTIG: relativ zur Kartendrehung
